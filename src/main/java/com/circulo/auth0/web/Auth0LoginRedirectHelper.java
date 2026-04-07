@@ -1,0 +1,71 @@
+package com.circulo.auth0.web;
+
+import com.circulo.auth0.config.Auth0IntegrationConfiguration;
+import com.circulo.auth0.constants.Auth0Constants;
+import com.circulo.auth0.util.Auth0AuthorizeUrlBuilder;
+import com.circulo.auth0.util.CookieUtil;
+import com.circulo.auth0.util.OAuthRandomTokenUtil;
+import com.circulo.auth0.util.PKCEUtil;
+
+import com.liferay.portal.kernel.log.Log;
+import com.liferay.portal.kernel.log.LogFactoryUtil;
+
+import java.net.URI;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * Orquesta el inicio del flujo OAuth: PKCE, cookies httpOnly temporales y URL de {@code /authorize}.
+ * <p>
+ * No registra valores de cookies ni secretos; solo metadatos seguros (p. ej. host).
+ */
+public final class Auth0LoginRedirectHelper {
+
+	private static final Log _log = LogFactoryUtil.getLog(
+		Auth0LoginRedirectHelper.class);
+
+	private Auth0LoginRedirectHelper() {
+	}
+
+	/**
+	 * Valida configuración, genera PKCE/state/nonce, los persiste en cookies httpOnly y devuelve
+	 * la URI de redirección a Auth0.
+	 */
+	public static URI beginAuthorization(
+			HttpServletRequest request, HttpServletResponse response,
+			Auth0IntegrationConfiguration configuration) {
+
+		Auth0AuthorizeUrlBuilder.validateConfigurationForLogin(configuration);
+
+		String state = OAuthRandomTokenUtil.generateOpaqueToken();
+		String nonce = OAuthRandomTokenUtil.generateOpaqueToken();
+		String codeVerifier = PKCEUtil.generateCodeVerifier();
+		String codeChallenge = PKCEUtil.generateCodeChallenge(codeVerifier);
+
+		String authorizeUrl = Auth0AuthorizeUrlBuilder.buildAuthorizeUrl(
+			configuration, state, nonce, codeChallenge);
+
+		int maxAge = Auth0Constants.OAUTH_FLOW_COOKIE_MAX_AGE_SECONDS;
+
+		CookieUtil.addCookie(
+			response, Auth0Constants.AUTH0_STATE, state, maxAge);
+		CookieUtil.addCookie(
+			response, Auth0Constants.AUTH0_NONCE, nonce, maxAge);
+		CookieUtil.addCookie(
+			response, Auth0Constants.AUTH0_CODE_VERIFIER, codeVerifier, maxAge);
+
+		String host = Auth0AuthorizeUrlBuilder.resolveAuthorizeHost(configuration);
+
+		_log.info("Inicio flujo Auth0 (PKCE); authorizeHost=" + host);
+
+		if (_log.isDebugEnabled()) {
+			_log.debug(
+				"Redirección a https://" + host +
+					"/authorize (query omitida por parámetros sensibles)");
+		}
+
+		return URI.create(authorizeUrl);
+	}
+
+}

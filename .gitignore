@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+
+# Salidas locales / IDE
+bin/
+out/
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Logs y OS
+*.log
+Thumbs.db
+.DS_Store
