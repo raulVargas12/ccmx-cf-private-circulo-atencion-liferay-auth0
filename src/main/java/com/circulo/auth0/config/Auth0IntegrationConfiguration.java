@@ -51,7 +51,28 @@ public interface Auth0IntegrationConfiguration {
 	@Meta.AD(deflt = "", name = "jwks-uri", required = false)
 	String jwksUri();
 
-	@Meta.AD(deflt = "", name = "apigee-base-url", required = false)
-	String apigeeBaseUrl();
+	@Meta.AD(
+		deflt = "false",
+		description = "cookies-secure-help",
+		name = "cookies-secure",
+		required = false
+	)
+	boolean cookiesSecure();
+
+	@Meta.AD(
+		deflt = "/group/guest/home",
+		description = "post-login-redirect-path-help",
+		name = "post-login-redirect-path",
+		required = false
+	)
+	String postLoginRedirectPath();
+
+	@Meta.AD(
+		deflt = "lax",
+		description = "cookie-same-site-help",
+		name = "cookie-same-site",
+		required = false
+	)
+	String cookieSameSite();
 
 }

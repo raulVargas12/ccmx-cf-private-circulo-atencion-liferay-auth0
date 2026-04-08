@@ -29,7 +29,6 @@ dependencies {
 
 	compileOnly "org.osgi:org.osgi.service.component.annotations:1.3.0"
 	compileOnly "org.osgi:org.osgi.service.metatype.annotations:1.4.0"
-	compileOnly "org.osgi:org.osgi.service.http.whiteboard:1.1.0"
 	compileOnly "javax.ws.rs:javax.ws.rs-api:2.1.1"
 
 	// JWT RS256 + JWKS (incluidas en el JAR del módulo). JARs multi-release: ver -fixupmessages en bnd.bnd.

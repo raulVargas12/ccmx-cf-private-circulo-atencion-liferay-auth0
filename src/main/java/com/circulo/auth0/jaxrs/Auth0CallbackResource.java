@@ -40,7 +40,8 @@ import org.osgi.service.component.annotations.Reference;
 
 /**
  * {@code GET /o/auth/callback} — intercambio de código, validación de id_token, usuario Liferay,
- * cookie de puente para {@code AutoLogin} y redirección a {@link Auth0Constants#POST_LOGIN_REDIRECT_PATH}.
+ * cookie de puente para {@code AutoLogin} y redirección según configuración
+ * {@link Auth0IntegrationConfiguration#postLoginRedirectPath()}.
  */
 @Component(
 	configurationPid = Auth0IntegrationConfiguration.PID,
@@ -139,6 +140,9 @@ public class Auth0CallbackResource {
 				"Datos PKCE ausentes; reinicie el login desde /o/auth/login");
 		}
 
+		boolean secureCookies = configuration.cookiesSecure();
+		String sameSite = configuration.cookieSameSite();
+
 		try {
 			Auth0TokenResult tokens = _auth0TokenClient.exchangeAuthorizationCode(
 				configuration, code, codeVerifier, configuration.redirectUri());
@@ -158,10 +162,10 @@ public class Auth0CallbackResource {
 
 			String loginToken = _auth0LoginTokenService.generateToken(userId);
 
-			// PROD con HTTPS: usar CookieUtil con secure=true (p. ej. constante o configuración).
 			CookieUtil.addCookie(
 				httpServletResponse, Auth0Constants.AUTH0_LOGIN_TOKEN, loginToken,
-				Auth0Constants.AUTH0_LOGIN_TOKEN_MAX_AGE_SECONDS);
+				Auth0Constants.AUTH0_LOGIN_TOKEN_MAX_AGE_SECONDS, secureCookies,
+				sameSite);
 
 			HttpSession session = originalRequest.getSession(true);
 
@@ -177,7 +181,8 @@ public class Auth0CallbackResource {
 			_userTokenStore.saveToken(
 				userId, tokens.getAccessToken(), expiresAt);
 
-			_clearOAuthFlowCookies(httpServletResponse);
+			_clearOAuthFlowCookies(
+				httpServletResponse, secureCookies, sameSite);
 
 			_log.info(
 				"Auth0 callback completado; userId=" + userId + " sub=" +
@@ -186,8 +191,17 @@ public class Auth0CallbackResource {
 			String portalUrl = PortalUtil.getPortalURL(
 				httpServletRequest, httpServletRequest.isSecure());
 
-			String redirect =
-				portalUrl + Auth0Constants.POST_LOGIN_REDIRECT_PATH;
+			String postLoginPath = configuration.postLoginRedirectPath();
+
+			if (Validator.isBlank(postLoginPath)) {
+				postLoginPath = "/group/guest/home";
+			}
+
+			if (!postLoginPath.startsWith("/")) {
+				postLoginPath = "/" + postLoginPath;
+			}
+
+			String redirect = portalUrl + postLoginPath;
 
 			return Response.status(Response.Status.FOUND).location(
 				URI.create(redirect)).build();
@@ -205,10 +219,15 @@ public class Auth0CallbackResource {
 		}
 	}
 
-	private static void _clearOAuthFlowCookies(HttpServletResponse response) {
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_STATE);
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_NONCE);
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_CODE_VERIFIER);
+	private static void _clearOAuthFlowCookies(
+			HttpServletResponse response, boolean secureCookies, String sameSite) {
+
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_STATE, secureCookies, sameSite);
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_NONCE, secureCookies, sameSite);
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_CODE_VERIFIER, secureCookies, sameSite);
 	}
 
 	private static Map<String, Object> _toClaimMap(OidcUserClaims claims) {

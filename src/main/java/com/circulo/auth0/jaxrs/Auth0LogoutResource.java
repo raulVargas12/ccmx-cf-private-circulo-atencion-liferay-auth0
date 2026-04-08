@@ -99,7 +99,11 @@ public class Auth0LogoutResource {
 			session.invalidate();
 		}
 
-		_clearOAuthCookies(httpServletResponse);
+		boolean secureCookies = configuration.cookiesSecure();
+		String sameSite = configuration.cookieSameSite();
+
+		_clearOAuthCookies(
+			httpServletResponse, secureCookies, sameSite);
 
 		String returnTo = configuration.logoutReturnUri();
 
@@ -127,11 +131,17 @@ public class Auth0LogoutResource {
 		}
 	}
 
-	private static void _clearOAuthCookies(HttpServletResponse response) {
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_STATE);
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_NONCE);
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_CODE_VERIFIER);
-		CookieUtil.clearCookie(response, Auth0Constants.AUTH0_LOGIN_TOKEN);
+	private static void _clearOAuthCookies(
+			HttpServletResponse response, boolean secureCookies, String sameSite) {
+
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_STATE, secureCookies, sameSite);
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_NONCE, secureCookies, sameSite);
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_CODE_VERIFIER, secureCookies, sameSite);
+		CookieUtil.clearCookie(
+			response, Auth0Constants.AUTH0_LOGIN_TOKEN, secureCookies, sameSite);
 	}
 
 }

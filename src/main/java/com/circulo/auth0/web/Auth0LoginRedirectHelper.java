@@ -48,12 +48,18 @@ public final class Auth0LoginRedirectHelper {
 
 		int maxAge = Auth0Constants.OAUTH_FLOW_COOKIE_MAX_AGE_SECONDS;
 
+		boolean secureCookies = configuration.cookiesSecure();
+		String sameSite = configuration.cookieSameSite();
+
 		CookieUtil.addCookie(
-			response, Auth0Constants.AUTH0_STATE, state, maxAge);
+			response, Auth0Constants.AUTH0_STATE, state, maxAge, secureCookies,
+			sameSite);
 		CookieUtil.addCookie(
-			response, Auth0Constants.AUTH0_NONCE, nonce, maxAge);
+			response, Auth0Constants.AUTH0_NONCE, nonce, maxAge, secureCookies,
+			sameSite);
 		CookieUtil.addCookie(
-			response, Auth0Constants.AUTH0_CODE_VERIFIER, codeVerifier, maxAge);
+			response, Auth0Constants.AUTH0_CODE_VERIFIER, codeVerifier, maxAge,
+			secureCookies, sameSite);
 
 		String host = Auth0AuthorizeUrlBuilder.resolveAuthorizeHost(configuration);
 

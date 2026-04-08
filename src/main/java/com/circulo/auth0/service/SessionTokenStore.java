@@ -3,9 +3,9 @@ package com.circulo.auth0.service;
 import javax.servlet.http.HttpSession;
 
 /**
- * Persistencia de tokens OAuth en la sesión HTTP (o abstracción futura).
- * <p>
- * TODO: definir política de almacenamiento (solo servidor, cifrado, refresh, revocación).
+ * Persistencia de tokens OAuth por id de sesión en caché {@code MultiVMPool} (clúster Liferay).
+ * Requiere replicación de sesión o sticky session para que el {@code JSESSIONID} sea coherente
+ * entre nodos; ver README del módulo.
  */
 public interface SessionTokenStore {
 

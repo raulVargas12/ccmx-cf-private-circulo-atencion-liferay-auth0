@@ -1,7 +1,7 @@
 Bundle-Name: Circulo Atencion - Auth0 Integration
 Bundle-SymbolicName: com.circulo.auth0.integration
 Bundle-Version: 1.0.0
-Bundle-Description: Integracion Auth0 (Authorization Code + PKCE) para Liferay DXP 7.3.10 — modulo esqueleto.
+Bundle-Description: Integracion Auth0 (Authorization Code + PKCE) para Liferay DXP 7.3.10.
 
 -dsannotations: *
 -dsannotations-options: inherit

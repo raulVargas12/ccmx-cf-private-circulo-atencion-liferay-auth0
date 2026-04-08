@@ -19,9 +19,6 @@ public final class Auth0Constants {
 	/** Patr?n Whiteboard de cierre de sesi?n (portal + federado seg?n fases posteriores). */
 	public static final String SERVLET_PATTERN_LOGOUT = "/o/auth/logout";
 
-	/** Patr?n Whiteboard del proxy hacia Apigee. */
-	public static final String SERVLET_PATTERN_APIGEE_PROXY = "/o/proxy/apigee/*";
-
 	/** Caducidad de cookies OAuth (state, nonce, code_verifier): 5 minutos. */
 	public static final int OAUTH_FLOW_COOKIE_MAX_AGE_SECONDS = 300;
 
@@ -53,9 +50,6 @@ public final class Auth0Constants {
 	/** Epoch segundos: caducidad aproximada del access_token. */
 	public static final String AUTH0_ACCESS_TOKEN_EXPIRES_AT =
 		"AUTH0_ACCESS_TOKEN_EXPIRES_AT";
-
-	/** Ruta relativa al contexto del portal tras login OK. */
-	public static final String POST_LOGIN_REDIRECT_PATH = "/group/guest/home";
 
 	// --- Par?metros query /authorize (OAuth2 + OIDC + PKCE) ---
 
