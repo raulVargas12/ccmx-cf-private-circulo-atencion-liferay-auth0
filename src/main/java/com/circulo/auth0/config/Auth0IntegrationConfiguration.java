@@ -75,4 +75,52 @@ public interface Auth0IntegrationConfiguration {
 	)
 	String cookieSameSite();
 
+	@Meta.AD(
+		deflt = "https://circulo.com/app",
+		description = "portal-access-app-claim-uri-help",
+		name = "portal-access-app-claim-uri",
+		required = false
+	)
+	String portalAccessAppClaimUri();
+
+	@Meta.AD(
+		deflt = "portal",
+		description = "portal-expected-app-help",
+		name = "portal-expected-app",
+		required = false
+	)
+	String portalExpectedApp();
+
+	@Meta.AD(
+		deflt = "https://circulo.com/roles",
+		description = "portal-roles-claim-uri-help",
+		name = "portal-roles-claim-uri",
+		required = false
+	)
+	String portalRolesClaimUri();
+
+	@Meta.AD(
+		deflt = "portal:agent,portal:agent:editor",
+		description = "portal-allowed-roles-help",
+		name = "portal-allowed-roles",
+		required = false
+	)
+	String portalAllowedRoles();
+
+	@Meta.AD(
+		deflt = "https://auth-bridge.com/data",
+		description = "auth-bridge-data-claim-uri-help",
+		name = "auth-bridge-data-claim-uri",
+		required = false
+	)
+	String authBridgeDataClaimUri();
+
+	@Meta.AD(
+		deflt = "",
+		description = "portal-access-denied-return-uri-help",
+		name = "portal-access-denied-return-uri",
+		required = false
+	)
+	String portalAccessDeniedReturnUri();
+
 }

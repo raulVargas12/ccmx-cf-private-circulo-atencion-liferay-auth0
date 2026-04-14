@@ -4,11 +4,13 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.RSAKeyProvider;
 
 import com.circulo.auth0.config.Auth0IntegrationConfiguration;
 import com.circulo.auth0.model.OidcUserClaims;
+import com.circulo.auth0.security.PortalIdTokenAccessPolicy;
 import com.circulo.auth0.security.jwks.Auth0JwksRsaKeyCache;
 import com.circulo.auth0.service.IdTokenValidator;
 
@@ -18,8 +20,10 @@ import com.liferay.portal.kernel.util.Validator;
 
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.util.Map;
 
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 
 /**
  * Valida {@code id_token} OIDC: firma RS256 vía JWKS, {@code iss}, {@code aud}, {@code exp},
@@ -31,6 +35,9 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 	private static final Log _log = LogFactoryUtil.getLog(IdTokenValidatorImpl.class);
 
 	private static final long _EXP_LEEWAY_SECONDS = 120L;
+
+	@Reference
+	private PortalIdTokenAccessPolicy _portalIdTokenAccessPolicy;
 
 	@Override
 	public OidcUserClaims validateAndExtractClaims(
@@ -169,6 +176,8 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 			throw new RuntimeException("Issuer inválido");
 		}
 
+		_portalIdTokenAccessPolicy.assertPortalAccessAllowed(configuration, jwt);
+
 		OidcUserClaims claims = new OidcUserClaims();
 
 		claims.setSub(jwt.getSubject());
@@ -176,15 +185,83 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 		claims.setGivenName(_claimString(jwt, "given_name"));
 		claims.setFamilyName(_claimString(jwt, "family_name"));
 
+		_applyAuthBridgeClaims(configuration, jwt, claims);
+
 		if (Validator.isBlank(claims.getSub())) {
 			throw new IllegalStateException("id_token sin claim sub");
 		}
 
+		String email = claims.getEmail();
+
+		if (Validator.isBlank(email)) {
+			email = claims.getAuthBridgeCorreo();
+			claims.setEmail(email);
+		}
+
 		if (Validator.isBlank(claims.getEmail())) {
-			throw new IllegalStateException("id_token sin claim email");
+			throw new IllegalStateException("id_token sin email ni correo en auth-bridge");
 		}
 
 		return claims;
+	}
+
+	private static void _applyAuthBridgeClaims(
+			Auth0IntegrationConfiguration configuration, DecodedJWT jwt,
+			OidcUserClaims claims) {
+
+		String dataUri = configuration.authBridgeDataClaimUri();
+
+		if (Validator.isBlank(dataUri)) {
+			return;
+		}
+
+		Map<String, Object> data = _claimAsObjectMap(jwt, dataUri.trim());
+
+		if (data == null) {
+			return;
+		}
+
+		claims.setAuthBridgeUsuario(_mapString(data, "usuario"));
+		claims.setAuthBridgeNombre(_mapString(data, "nombre"));
+		claims.setAuthBridgeApellidos(_mapString(data, "apellidos"));
+		claims.setAuthBridgeCorreo(_mapString(data, "correo"));
+	}
+
+	private static Map<String, Object> _claimAsObjectMap(
+			DecodedJWT jwt, String claimName) {
+
+		Claim claim = jwt.getClaim(claimName);
+
+		if ((claim == null) || claim.isNull()) {
+			return null;
+		}
+
+		try {
+			return claim.asMap();
+		}
+		catch (Exception e) {
+			Log log = LogFactoryUtil.getLog(IdTokenValidatorImpl.class);
+
+			if (log.isDebugEnabled()) {
+				log.debug(
+					"No se pudo leer claim como mapa: " + claimName + " — " +
+						e.getMessage());
+			}
+
+			return null;
+		}
+	}
+
+	private static String _mapString(Map<String, Object> map, String key) {
+		Object v = map.get(key);
+
+		if (v == null) {
+			return null;
+		}
+
+		String s = String.valueOf(v).trim();
+
+		return s.isEmpty() ? null : s;
 	}
 
 	private static boolean _issuerMatchesExpected(

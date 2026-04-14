@@ -5,14 +5,14 @@ import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * Aprovisionamiento o actualización de usuarios Liferay a partir de claims OIDC.
- * <p>
- * TODO: encapsular {@code UserLocalService} / {@code ServiceContext} según políticas del portal.
+ * Aprovisionamiento de usuarios Liferay a partir de claims OIDC (altas nuevas; existentes sin
+ * cambiar perfil).
  */
 public interface UserProvisioningService {
 
 	/**
-	 * Crea o actualiza el usuario local asociado al subject/claims.
+	 * Crea el usuario local si no existe (por email); si ya existe, devuelve su {@code userId} sin
+	 * modificar nombre, apellidos ni demás atributos de perfil.
 	 *
 	 * @param request petición actual (para companyId, locale, auditoría)
 	 * @param subject claim {@code sub}

@@ -8,8 +8,10 @@ import com.circulo.auth0.service.Auth0LoginTokenService;
 import com.circulo.auth0.service.Auth0TokenClient;
 import com.circulo.auth0.service.IdTokenValidator;
 import com.circulo.auth0.service.SessionTokenStore;
+import com.circulo.auth0.security.PortalAccessDeniedException;
 import com.circulo.auth0.service.UserProvisioningService;
 import com.circulo.auth0.service.UserTokenStore;
+import com.circulo.auth0.util.Auth0OAuthUrls;
 import com.circulo.auth0.util.CookieUtil;
 
 import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
@@ -206,6 +208,38 @@ public class Auth0CallbackResource {
 			return Response.status(Response.Status.FOUND).location(
 				URI.create(redirect)).build();
 		}
+		catch (PortalAccessDeniedException e) {
+			_log.warn("Auth0 callback: acceso al portal denegado — " + e.getMessage());
+
+			HttpSession deniedSession = originalRequest.getSession(false);
+
+			if (deniedSession != null) {
+				_sessionTokenStore.clear(deniedSession);
+
+				try {
+					deniedSession.invalidate();
+				}
+				catch (IllegalStateException ise) {
+					// sesión ya invalidada
+				}
+			}
+
+			_clearOAuthFlowCookies(
+				httpServletResponse, secureCookies, sameSite);
+
+			String returnTo = configuration.portalAccessDeniedReturnUri();
+
+			if (Validator.isBlank(returnTo)) {
+				returnTo = PortalUtil.getPortalURL(
+					httpServletRequest, httpServletRequest.isSecure());
+			}
+
+			String logoutUrl = Auth0OAuthUrls.buildV2LogoutUrl(
+				configuration, returnTo);
+
+			return Response.status(Response.Status.FOUND).location(
+				URI.create(logoutUrl)).build();
+		}
 		catch (IllegalStateException | IllegalArgumentException e) {
 			_log.error("Auth0 callback: " + e.getMessage(), e);
 
@@ -237,6 +271,22 @@ public class Auth0CallbackResource {
 		map.put("email", claims.getEmail());
 		map.put("given_name", claims.getGivenName());
 		map.put("family_name", claims.getFamilyName());
+
+		if (!Validator.isBlank(claims.getAuthBridgeUsuario())) {
+			map.put("auth_bridge_usuario", claims.getAuthBridgeUsuario());
+		}
+
+		if (!Validator.isBlank(claims.getAuthBridgeNombre())) {
+			map.put("auth_bridge_nombre", claims.getAuthBridgeNombre());
+		}
+
+		if (!Validator.isBlank(claims.getAuthBridgeApellidos())) {
+			map.put("auth_bridge_apellidos", claims.getAuthBridgeApellidos());
+		}
+
+		if (!Validator.isBlank(claims.getAuthBridgeCorreo())) {
+			map.put("auth_bridge_correo", claims.getAuthBridgeCorreo());
+		}
 
 		return map;
 	}

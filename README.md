@@ -31,6 +31,20 @@ PID: `com.circulo.auth0.config.Auth0IntegrationConfiguration`
 | `cookiesSecure` | `false` en local HTTP; `true` en DEV/QA/PROD con HTTPS. |
 | `cookieSameSite` (`cookie-same-site` en `.config`) | `lax` (defecto), `strict`, `none` o vacío (sin atributo SameSite). `none` fuerza `Secure`. |
 | `postLoginRedirectPath` | Ruta relativa tras login OK (defecto `/group/guest/home`). |
+| `portalAccessAppClaimUri` | Claim del `id_token` con la app (defecto `https://circulo.com/app`). |
+| `portalExpectedApp` | Valor permitido (defecto `portal`). |
+| `portalRolesClaimUri` | Claim tipo array de strings con roles (defecto `https://circulo.com/roles`). |
+| `portalAllowedRoles` | Roles permitidos, separados por coma (defecto `portal:agent,portal:agent:editor`). |
+| `authBridgeDataClaimUri` | Objeto con `usuario`, `nombre`, `apellidos`, `correo` (defecto `https://auth-bridge.com/data`). |
+| `portalAccessDeniedReturnUri` | `returnTo` del `/v2/logout` de Auth0 si se deniega el acceso; vacío = URL pública del portal. |
+
+Si la app o los roles no cumplen la política, **no** se crea usuario ni sesión OAuth en caché; se limpian cookies del flujo, se invalida la sesión HTTP si existía y se redirige a **logout federado** en Auth0.
+
+### Perfil Liferay vs claims del token
+
+- **Usuario nuevo:** `given_name` / `family_name` con prioridad; si faltan, `nombre` / `apellidos` del objeto auth-bridge (`authBridgeDataClaimUri`). **Screen name** desde `usuario` del auth-bridge si es único y válido; si no, Liferay lo genera. Email: claim `email` o, si falta, `correo` del auth-bridge.
+- **Usuario ya existente (mismo email):** no se actualiza el perfil en Liferay en cada login.
+- **No implementados aquí (valorar aparte):** `picture` (foto de perfil Liferay requiere descargar bytes y `updatePortrait`), `email_verified` / cambio de email (política Liferay y verificación), `nickname`, `name`, objetos anidados (`user_info`, `available_apps`, etc.), claims numéricos/booleanos de auth-bridge (solo informativos salvo reglas de negocio futuras).
 
 ## Clúster Liferay y sesión HTTP
 

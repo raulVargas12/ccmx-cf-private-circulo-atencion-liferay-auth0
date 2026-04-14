@@ -10,6 +10,11 @@ public class OidcUserClaims {
 	private String _givenName;
 	private String _familyName;
 
+	private String _authBridgeUsuario;
+	private String _authBridgeNombre;
+	private String _authBridgeApellidos;
+	private String _authBridgeCorreo;
+
 	public String getSub() {
 		return _sub;
 	}
@@ -40,6 +45,38 @@ public class OidcUserClaims {
 
 	public void setFamilyName(String familyName) {
 		_familyName = familyName;
+	}
+
+	public String getAuthBridgeUsuario() {
+		return _authBridgeUsuario;
+	}
+
+	public void setAuthBridgeUsuario(String authBridgeUsuario) {
+		_authBridgeUsuario = authBridgeUsuario;
+	}
+
+	public String getAuthBridgeNombre() {
+		return _authBridgeNombre;
+	}
+
+	public void setAuthBridgeNombre(String authBridgeNombre) {
+		_authBridgeNombre = authBridgeNombre;
+	}
+
+	public String getAuthBridgeApellidos() {
+		return _authBridgeApellidos;
+	}
+
+	public void setAuthBridgeApellidos(String authBridgeApellidos) {
+		_authBridgeApellidos = authBridgeApellidos;
+	}
+
+	public String getAuthBridgeCorreo() {
+		return _authBridgeCorreo;
+	}
+
+	public void setAuthBridgeCorreo(String authBridgeCorreo) {
+		_authBridgeCorreo = authBridgeCorreo;
 	}
 
 }

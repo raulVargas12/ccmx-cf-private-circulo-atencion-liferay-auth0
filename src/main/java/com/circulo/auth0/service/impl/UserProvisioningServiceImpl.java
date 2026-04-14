@@ -11,6 +11,7 @@ import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.portal.kernel.util.Validator;
 import com.liferay.portal.kernel.workflow.WorkflowConstants;
 
+import java.util.Locale;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
@@ -19,7 +20,8 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 
 /**
- * Aprovisiona usuarios locales a partir de claims OIDC (email obligatorio).
+ * Da de alta usuarios nuevos Liferay a partir de claims OIDC y {@code auth-bridge}. Si el usuario
+ * ya existe (mismo email), no modifica su perfil.
  */
 @Component(immediate = true, service = UserProvisioningService.class)
 public class UserProvisioningServiceImpl implements UserProvisioningService {
@@ -35,7 +37,7 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 
 		long companyId = PortalUtil.getCompanyId(request);
 
-		String email = GetterUtil.getString((String)claims.get("email"));
+		String email = _emailFromClaims(claims);
 
 		if (Validator.isBlank(email)) {
 			throw new IllegalStateException(
@@ -48,8 +50,9 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 			return user.getUserId();
 		}
 
-		String firstName = GetterUtil.getString((String)claims.get("given_name"));
-		String lastName = GetterUtil.getString((String)claims.get("family_name"));
+		String firstName = _firstNameFromClaims(claims);
+		String lastName = _lastNameFromClaims(claims);
+		String screenName = _screenNameForNewUser(companyId, claims, email);
 
 		ServiceContext serviceContext = ServiceContextFactory.getInstance(
 			User.class.getName(), request);
@@ -58,16 +61,89 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 
 		String password1 = com.liferay.portal.kernel.util.PwdGenerator.getPassword();
 
+		// addUser 7.3 (sin OpenID): el 6.º boolean es autoScreenName. passwordReset lo impone la política; SSO lo limpia abajo.
 		user = _userLocalService.addUser(
-			creatorUserId, companyId, false, password1, password1, true, null,
-			email, 0, "", PortalUtil.getLocale(request), firstName, "", lastName,
-			0, 0, true, 1, 1, 1970, "", new long[0], new long[0], new long[0],
-			new long[0], false, serviceContext);
+			creatorUserId, companyId, false, password1, password1, false,
+			screenName, email, PortalUtil.getLocale(request), firstName, "",
+			lastName, 0, 0, true, 1, 1, 1970, "", new long[0], new long[0],
+			new long[0], new long[0], false, serviceContext);
 
 		_userLocalService.updateStatus(
 			user.getUserId(), WorkflowConstants.STATUS_APPROVED, serviceContext);
 
+		_userLocalService.updatePasswordReset(user.getUserId(), false);
+
 		return user.getUserId();
+	}
+
+	private static String _emailFromClaims(Map<String, Object> claims) {
+		String email = GetterUtil.getString((String)claims.get("email"));
+
+		if (!Validator.isBlank(email)) {
+			return email.trim();
+		}
+
+		return GetterUtil.getString((String)claims.get("auth_bridge_correo"));
+	}
+
+	private static String _firstNameFromClaims(Map<String, Object> claims) {
+		String v = GetterUtil.getString((String)claims.get("given_name"));
+
+		if (!Validator.isBlank(v)) {
+			return v.trim();
+		}
+
+		return GetterUtil.getString((String)claims.get("auth_bridge_nombre"));
+	}
+
+	private static String _lastNameFromClaims(Map<String, Object> claims) {
+		String v = GetterUtil.getString((String)claims.get("family_name"));
+
+		if (!Validator.isBlank(v)) {
+			return v.trim();
+		}
+
+		return GetterUtil.getString((String)claims.get("auth_bridge_apellidos"));
+	}
+
+	private String _screenNameForNewUser(
+			long companyId, Map<String, Object> claims, String email) {
+
+		String raw = GetterUtil.getString((String)claims.get("auth_bridge_usuario"));
+
+		if (Validator.isBlank(raw)) {
+			return null;
+		}
+
+		String normalized = _normalizeScreenName(raw);
+
+		if (Validator.isBlank(normalized)) {
+			return null;
+		}
+
+		try {
+			User existing = _userLocalService.fetchUserByScreenName(
+				companyId, normalized);
+
+			if ((existing != null) &&
+				!email.equalsIgnoreCase(existing.getEmailAddress())) {
+
+				return null;
+			}
+
+			return normalized;
+		}
+		catch (Exception e) {
+			return null;
+		}
+	}
+
+	private static String _normalizeScreenName(String raw) {
+		String s = raw.trim().toLowerCase(Locale.ROOT);
+
+		s = s.replaceAll("[^a-z0-9._-]+", "");
+
+		return s.isEmpty() ? null : s;
 	}
 
 }
