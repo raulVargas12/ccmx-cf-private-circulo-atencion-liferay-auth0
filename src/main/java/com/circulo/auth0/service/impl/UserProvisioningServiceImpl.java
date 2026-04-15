@@ -70,9 +70,10 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 
 		_userLocalService.updateStatus(
 			user.getUserId(), WorkflowConstants.STATUS_APPROVED, serviceContext);
-
+		
+		//se salta el reset de cotraseña y se marca como verificado el email para no pedirlas en Liferay durante el alta
 		_userLocalService.updatePasswordReset(user.getUserId(), false);
-
+		_userLocalService.updateEmailAddressVerified(user.getUserId(), true);
 		return user.getUserId();
 	}
 
