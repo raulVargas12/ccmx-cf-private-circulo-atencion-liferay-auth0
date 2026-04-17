@@ -52,6 +52,10 @@ Si la app o los roles no cumplen la política, **no** se crea usuario ni sesión
 - **`SessionTokenStore`** indexa por **`HttpSession.getId()`**. En clúster hace falta **replicación de sesión** en Liferay o **sticky session** en el balanceador para que el mismo `JSESSIONID` (y el mismo id interno de sesión) sea válido en el nodo que atienda cada petición. Sin eso, un usuario podría perder los tokens OAuth tras el login al caer en otro nodo.
 - **Operaciones:** coordinar con infraestructura (sticky o replicación documentada en el manual de Liferay para vuestra versión).
 
+## Logs
+
+En PROD conviene dejar el paquete `com.circulo.auth0` en **INFO** o **WARN**; **DEBUG** solo en entornos locales o de diagnóstico temporal. El módulo evita en logs dominios completos de Auth0, URIs JWKS, `sub` en INFO y listas de roles en texto claro; detalle de `userId` queda en DEBUG en el callback.
+
 ## Compilación y despliegue
 
 - JDK 8, `release.dxp.api` alineado al servidor (p. ej. `7.3.10.u32`).

@@ -103,7 +103,9 @@ public class PortalIdTokenAccessPolicyImpl implements PortalIdTokenAccessPolicy 
 		}
 
 		if (_log.isDebugEnabled()) {
-			_log.debug("Portal access OK; app=" + appValue + " roles=" + tokenRoles);
+			_log.debug(
+				"Portal access OK; roles en token=" + tokenRoles.size() +
+					" (nombres omitidos en log)");
 		}
 	}
 

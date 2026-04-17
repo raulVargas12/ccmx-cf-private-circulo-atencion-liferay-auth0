@@ -77,8 +77,6 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 
 		resolvedDomain = _normalizeHost(resolvedDomain);
 
-		String expectedIssuer = "https://" + resolvedDomain + "/";
-
 		String resolvedJwksUri =
 			"https://" + resolvedDomain + "/.well-known/jwks.json";
 
@@ -146,34 +144,17 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 
 		String tokenIssuer = jwt.getIssuer();
 
-		if (_log.isDebugEnabled()) {
-			_log.debug("===== VALIDACION JWT =====");
-			_log.debug("auth0Domain: " + configuration.auth0Domain());
-			_log.debug(
-				"auth0CustomDomain: " + configuration.auth0CustomDomain());
-			_log.debug("resolvedDomain: " + resolvedDomain);
-			_log.debug("expectedIssuer: " + expectedIssuer);
-			_log.debug("tokenIssuer: " + tokenIssuer);
-			_log.debug(
-				"issuerNormalizadoEsperado: " +
-					_normalizeIssuerForCompare(expectedIssuer));
-			_log.debug(
-				"issuerNormalizadoToken: " +
-					_normalizeIssuerForCompare(tokenIssuer));
-			_log.debug("resolvedJwksUri (derivado): " + resolvedJwksUri);
-			_log.debug("jwksUri (config): " + configuration.jwksUri());
-			_log.debug("jwksUri (efectivo): " + jwksUriForKeys);
-		}
-
 		boolean issuerValid = _issuerMatchesExpected(
 			resolvedDomain, tokenIssuer);
 
-		if (_log.isDebugEnabled()) {
-			_log.debug("issuerValid: " + issuerValid);
-		}
-
 		if (!issuerValid) {
 			throw new RuntimeException("Issuer inválido");
+		}
+
+		if (_log.isDebugEnabled()) {
+			_log.debug(
+				"id_token: firma RS256, audience, nonce e issuer verificados " +
+					"(sin dominios ni URIs en log)");
 		}
 
 		_portalIdTokenAccessPolicy.assertPortalAccessAllowed(configuration, jwt);
@@ -244,7 +225,7 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 
 			if (log.isDebugEnabled()) {
 				log.debug(
-					"No se pudo leer claim como mapa: " + claimName + " — " +
+					"No se pudo leer claim como mapa (URI omitida): " +
 						e.getMessage());
 			}
 

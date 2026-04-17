@@ -44,7 +44,9 @@ public class PortalLoginServiceImpl implements PortalLoginService {
 		request.setAttribute(WebKeys.USER, user);
 		request.setAttribute(WebKeys.USER_ID, Long.valueOf(userId));
 
-		_log.debug("Sesión portal asociada al userId=" + userId);
+		if (_log.isDebugEnabled()) {
+			_log.debug("Sesión portal asociada (userId omitido en log)");
+		}
 	}
 
 }

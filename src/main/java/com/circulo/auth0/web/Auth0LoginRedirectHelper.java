@@ -18,7 +18,7 @@ import javax.servlet.http.HttpServletResponse;
 /**
  * Orquesta el inicio del flujo OAuth: PKCE, cookies httpOnly temporales y URL de {@code /authorize}.
  * <p>
- * No registra valores de cookies ni secretos; solo metadatos seguros (p. ej. host).
+ * No registra valores de cookies, secretos ni host de autorización en INFO (solo DEBUG genérico).
  */
 public final class Auth0LoginRedirectHelper {
 
@@ -61,14 +61,10 @@ public final class Auth0LoginRedirectHelper {
 			response, Auth0Constants.AUTH0_CODE_VERIFIER, codeVerifier, maxAge,
 			secureCookies, sameSite);
 
-		String host = Auth0AuthorizeUrlBuilder.resolveAuthorizeHost(configuration);
-
-		_log.info("Inicio flujo Auth0 (PKCE); authorizeHost=" + host);
-
 		if (_log.isDebugEnabled()) {
 			_log.debug(
-				"Redirección a https://" + host +
-					"/authorize (query omitida por parámetros sensibles)");
+				"Inicio flujo Auth0 (PKCE); redirección a /authorize " +
+					"(host y query omitidos en log)");
 		}
 
 		return URI.create(authorizeUrl);

@@ -186,9 +186,11 @@ public class Auth0CallbackResource {
 			_clearOAuthFlowCookies(
 				httpServletResponse, secureCookies, sameSite);
 
-			_log.info(
-				"Auth0 callback completado; userId=" + userId + " sub=" +
-					oidcClaims.getSub());
+			if (_log.isDebugEnabled()) {
+				_log.debug("Auth0 callback completado; userId=" + userId);
+			}
+
+			_log.info("Auth0 callback completado");
 
 			String portalUrl = PortalUtil.getPortalURL(
 				httpServletRequest, httpServletRequest.isSecure());
