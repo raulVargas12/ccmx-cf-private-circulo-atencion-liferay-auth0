@@ -116,11 +116,19 @@ public interface Auth0IntegrationConfiguration {
 	String authBridgeDataClaimUri();
 
 	@Meta.AD(
-		deflt = "",
-		description = "portal-access-denied-return-uri-help",
-		name = "portal-access-denied-return-uri",
+		deflt = "/web/guest/error-auth",
+		description = "auth0-oauth-error-page-path-help",
+		name = "auth0-oauth-error-page-path",
 		required = false
 	)
-	String portalAccessDeniedReturnUri();
+	String auth0OAuthErrorPagePath();
+
+	@Meta.AD(
+		deflt = "/web/guest/email-no-verificado",
+		description = "auth0-email-not-verified-page-path-help",
+		name = "auth0-email-not-verified-page-path",
+		required = false
+	)
+	String auth0EmailNotVerifiedPagePath();
 
 }

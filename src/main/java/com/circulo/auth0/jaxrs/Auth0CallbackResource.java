@@ -11,7 +11,6 @@ import com.circulo.auth0.service.SessionTokenStore;
 import com.circulo.auth0.security.PortalAccessDeniedException;
 import com.circulo.auth0.service.UserProvisioningService;
 import com.circulo.auth0.service.UserTokenStore;
-import com.circulo.auth0.util.Auth0OAuthUrls;
 import com.circulo.auth0.util.CookieUtil;
 
 import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
@@ -21,7 +20,10 @@ import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.portal.kernel.util.Validator;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
@@ -41,9 +43,12 @@ import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
- * {@code GET /o/auth/callback} — intercambio de código, validación de id_token, usuario Liferay,
- * cookie de puente para {@code AutoLogin} y redirección según configuración
- * {@link Auth0IntegrationConfiguration#postLoginRedirectPath()}.
+ * {@code GET /o/auth/callback} — si Auth0 devuelve {@code error} / {@code error_description},
+ * redirige a la página configurada en {@link Auth0IntegrationConfiguration#auth0OAuthErrorPagePath()}
+ * con {@code ?code=} para el portlet React {@code auth0_error}; si {@code email_not_verified}, a
+ * {@link Auth0IntegrationConfiguration#auth0EmailNotVerifiedPagePath()}; si no, intercambio de código,
+ * validación de {@code id_token}, usuario Liferay, cookie de puente para {@code AutoLogin} y
+ * redirección según {@link Auth0IntegrationConfiguration#postLoginRedirectPath()}.
  */
 @Component(
 	configurationPid = Auth0IntegrationConfiguration.PID,
@@ -92,18 +97,40 @@ public class Auth0CallbackResource {
 			@Context HttpServletRequest httpServletRequest,
 			@Context HttpServletResponse httpServletResponse,
 			@QueryParam("code") String code,
-			@QueryParam("state") String state,
-			@QueryParam("error") String error,
-			@QueryParam("error_description") String errorDescription) {
+			@QueryParam("state") String state) {
+
+		HttpServletRequest originalRequest =
+			PortalUtil.getOriginalServletRequest(httpServletRequest);
+
+		String error = originalRequest.getParameter("error");
+		String errorDescription = originalRequest.getParameter("error_description");
 
 		if (Validator.isNotNull(error)) {
-			_log.warn(
-				"Auth0 callback con error=" + error +
-					" (descripción omitida en log)");
+			String desc =
+				(errorDescription != null) ?
+					errorDescription.toLowerCase(Locale.ROOT) : "";
 
-			return _badRequest(
-				"Error OAuth desde Auth0: " + error + _safeDescriptionSuffix(
-					errorDescription));
+			if ("access_denied".equals(error) &&
+				desc.contains("email_not_verified")) {
+
+				_log.warn("Auth0 login falló: email no verificado");
+
+				return _seeOtherToFriendlyPage(
+					httpServletRequest, _emailNotVerifiedPagePath());
+			}
+
+			if ("access_denied".equals(error)) {
+				_log.warn("Auth0 login denegado por el usuario");
+
+				return _seeOtherToFriendlyPage(
+					httpServletRequest,
+					_auth0OAuthErrorRedirectWithCode("access_denied"));
+			}
+
+			_log.error("Error en callback Auth0: " + error);
+
+			return _seeOtherToFriendlyPage(
+				httpServletRequest, _auth0OAuthErrorRedirectWithCode(error));
 		}
 
 		if (Validator.isBlank(code) || Validator.isBlank(state)) {
@@ -118,9 +145,6 @@ public class Auth0CallbackResource {
 			return _serverError(
 				"Configuración Auth0 no disponible. Compruebe System Settings / OSGi.");
 		}
-
-		HttpServletRequest originalRequest =
-			PortalUtil.getOriginalServletRequest(httpServletRequest);
 
 		String expectedState = CookieUtil.getCookie(
 			originalRequest, Auth0Constants.AUTH0_STATE);
@@ -229,18 +253,9 @@ public class Auth0CallbackResource {
 			_clearOAuthFlowCookies(
 				httpServletResponse, secureCookies, sameSite);
 
-			String returnTo = configuration.portalAccessDeniedReturnUri();
-
-			if (Validator.isBlank(returnTo)) {
-				returnTo = PortalUtil.getPortalURL(
-					httpServletRequest, httpServletRequest.isSecure());
-			}
-
-			String logoutUrl = Auth0OAuthUrls.buildV2LogoutUrl(
-				configuration, returnTo);
-
-			return Response.status(Response.Status.FOUND).location(
-				URI.create(logoutUrl)).build();
+			return _seeOtherToFriendlyPage(
+				httpServletRequest,
+				_auth0OAuthErrorRedirectWithCode("portal_access_denied"));
 		}
 		catch (IllegalStateException | IllegalArgumentException e) {
 			_log.error("Auth0 callback: " + e.getMessage(), e);
@@ -252,6 +267,70 @@ public class Auth0CallbackResource {
 
 			return _serverError(
 				"Error al completar el inicio de sesión. Intente de nuevo.");
+		}
+	}
+
+	/**
+	 * Ruta relativa al portal (p. ej. {@code /web/guest/error-auth}) donde está el portlet
+	 * {@code auth0_error}; se añade {@code ?code=} o {@code &code=} según corresponda.
+	 */
+	private String _auth0OAuthErrorPagePath() {
+		Auth0IntegrationConfiguration configuration = _configuration;
+
+		if (configuration == null) {
+			return "/web/guest/error-auth";
+		}
+
+		String path = configuration.auth0OAuthErrorPagePath();
+
+		if (Validator.isBlank(path)) {
+			return "/web/guest/error-auth";
+		}
+
+		path = path.trim();
+
+		if (!path.startsWith("/")) {
+			path = "/" + path;
+		}
+
+		return path;
+	}
+
+	/**
+	 * Ruta relativa al portal cuando Auth0 devuelve {@code access_denied} por email no verificado.
+	 */
+	private String _emailNotVerifiedPagePath() {
+		Auth0IntegrationConfiguration configuration = _configuration;
+
+		if (configuration == null) {
+			return "/web/guest/email-no-verificado";
+		}
+
+		String path = configuration.auth0EmailNotVerifiedPagePath();
+
+		if (Validator.isBlank(path)) {
+			return "/web/guest/email-no-verificado";
+		}
+
+		path = path.trim();
+
+		if (!path.startsWith("/")) {
+			path = "/" + path;
+		}
+
+		return path;
+	}
+
+	private String _auth0OAuthErrorRedirectWithCode(String rawOAuthErrorCode) {
+		String base = _auth0OAuthErrorPagePath();
+		String sep = base.contains("?") ? "&" : "?";
+
+		try {
+			return base + sep + "code=" + URLEncoder.encode(
+				rawOAuthErrorCode, StandardCharsets.UTF_8.name());
+		}
+		catch (java.io.UnsupportedEncodingException uee) {
+			return base + sep + "code=" + rawOAuthErrorCode;
 		}
 	}
 
@@ -293,12 +372,18 @@ public class Auth0CallbackResource {
 		return map;
 	}
 
-	private static String _safeDescriptionSuffix(String errorDescription) {
-		if (Validator.isBlank(errorDescription)) {
-			return "";
+	private static Response _seeOtherToFriendlyPage(
+		HttpServletRequest httpServletRequest, String pathWithOptionalQuery) {
+
+		String portalUrl = PortalUtil.getPortalURL(
+			httpServletRequest, httpServletRequest.isSecure());
+
+		if (!pathWithOptionalQuery.startsWith("/")) {
+			pathWithOptionalQuery = "/" + pathWithOptionalQuery;
 		}
 
-		return " — " + errorDescription;
+		return Response.seeOther(
+			URI.create(portalUrl + pathWithOptionalQuery)).build();
 	}
 
 	private static Response _badRequest(String message) {

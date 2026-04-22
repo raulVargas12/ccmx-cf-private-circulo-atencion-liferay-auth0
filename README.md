@@ -14,6 +14,43 @@ La aplicación usa base `osgi.jaxrs.application.base=/auth` (prefijo Liferay `/o
 | GET | `/o/auth/callback` | `Auth0CallbackResource` |
 | GET | `/o/auth/logout` | `Auth0LogoutResource` |
 
+## Callback (`GET /o/auth/callback`): errores y redirecciones
+
+La URL absoluta de destino es siempre **`{portalUrl}`** (`PortalUtil.getPortalURL`) **+** ruta relativa (y query si aplica). Las respuestas **303 See Other** hacen que el navegador cargue una página del portal; las **400 / 403 / 500** devuelven **texto plano en la misma petición al callback** (sin redirección amigable).
+
+### Auth0 devuelve `error` en la query (antes del intercambio de código)
+
+| Condición | Redirección | Notas |
+|-----------|-------------|--------|
+| `error=access_denied` y `error_description` (minúsculas) contiene `email_not_verified` | `{portalUrl}` + **`auth0EmailNotVerifiedPagePath`** (defecto `/web/guest/email-no-verificado`) | Sin parámetro `code` en query. |
+| `error=access_denied` y **no** es el caso anterior (p. ej. usuario cancela) | `{portalUrl}` + **`auth0OAuthErrorPagePath`** + `?code=access_denied` | Defecto ruta `/web/guest/error-auth`. |
+| Cualquier otro `error` de OAuth (p. ej. `server_error`) | Misma página de error OAuth + `?code={error}` | `{error}` es el valor enviado por Auth0 (URL-encoded). |
+
+Si la configuración OSGi no está cargada, las rutas por defecto anteriores siguen aplicándose en estos ramos.
+
+### Sin `error` de Auth0: validación previa al intercambio de código
+
+| Condición | Respuesta HTTP | Cuerpo (ejemplo) |
+|-----------|----------------|------------------|
+| Faltan `code` o `state` | **400** | Parámetros obligatorios |
+| `_configuration` nulo | **500** | Configuración Auth0 no disponible |
+| Cookie `AUTH0_STATE` vacía o distinta de `state` | **403** | State no válido (posible CSRF) |
+| Faltan cookies PKCE (`AUTH0_CODE_VERIFIER` / `AUTH0_NONCE`) | **400** | Datos PKCE ausentes |
+
+### Tras intercambio de código (dentro del flujo de login)
+
+| Condición | Comportamiento |
+|-----------|----------------|
+| **`PortalAccessDeniedException`** (política app/roles en `id_token`, etc.) | Limpieza de sesión/cookies del flujo; **303** a **`auth0OAuthErrorPagePath`** + `?code=portal_access_denied`. |
+| **`IllegalStateException`** / **`IllegalArgumentException`** | **500** con mensaje de error en texto (sin redirect). Incluye fallos típicos de token/`id_token`/validación según mensaje. |
+| Otra **`Exception`** | **500** genérico (*Error al completar el inicio de sesión…*). |
+
+### Login correcto (referencia)
+
+**302** a `{portalUrl}` + **`postLoginRedirectPath`** (si viene vacío en config se usa `/group/guest/home`).
+
+---
+
 ## Configuración OSGi
 
 PID: `com.circulo.auth0.config.Auth0IntegrationConfiguration`  
@@ -36,9 +73,10 @@ PID: `com.circulo.auth0.config.Auth0IntegrationConfiguration`
 | `portalRolesClaimUri` | Claim tipo array de strings con roles (defecto `https://circulo.com/roles`). |
 | `portalAllowedRoles` | Roles permitidos, separados por coma (defecto `portal:agent,portal:agent:editor`). |
 | `authBridgeDataClaimUri` | Objeto con `usuario`, `nombre`, `apellidos`, `correo` (defecto `https://auth-bridge.com/data`). |
-| `portalAccessDeniedReturnUri` | `returnTo` del `/v2/logout` de Auth0 si se deniega el acceso; vacío = URL pública del portal. |
+| `auth0OAuthErrorPagePath` | Ruta del portlet React de errores OAuth (defecto `/web/guest/error-auth`); el callback añade `?code=`. |
+| `auth0EmailNotVerifiedPagePath` | Ruta cuando Auth0 deniega por email no verificado (defecto `/web/guest/email-no-verificado`). |
 
-Si la app o los roles no cumplen la política, **no** se crea usuario ni sesión OAuth en caché; se limpian cookies del flujo, se invalida la sesión HTTP si existía y se redirige a **logout federado** en Auth0.
+Si la app o los roles no cumplen la política del token (`PortalAccessDeniedException`), **no** se completa el login; se limpian cookies del flujo y sesión HTTP si aplica, y el callback **redirige** a la página configurada en **`auth0OAuthErrorPagePath`** con **`?code=portal_access_denied`** (véase la sección *Callback* arriba).
 
 ### Perfil Liferay vs claims del token
 
