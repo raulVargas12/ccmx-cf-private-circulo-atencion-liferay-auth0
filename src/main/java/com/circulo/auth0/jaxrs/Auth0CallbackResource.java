@@ -11,6 +11,7 @@ import com.circulo.auth0.service.SessionTokenStore;
 import com.circulo.auth0.security.PortalAccessDeniedException;
 import com.circulo.auth0.service.UserProvisioningService;
 import com.circulo.auth0.service.UserTokenStore;
+import com.circulo.auth0.util.Auth0OAuthUrls;
 import com.circulo.auth0.util.CookieUtil;
 
 import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
@@ -44,8 +45,9 @@ import org.osgi.service.component.annotations.Reference;
 
 /**
  * {@code GET /o/auth/callback} — si Auth0 devuelve {@code error} / {@code error_description},
- * redirige a la página configurada en {@link Auth0IntegrationConfiguration#auth0OAuthErrorPagePath()}
- * con {@code ?code=} para el portlet React {@code auth0_error}; si {@code email_not_verified}, a
+ * redirige vía {@code /v2/logout} de Auth0 (cierra sesión IdP) y {@code returnTo} a la página
+ * configurada en {@link Auth0IntegrationConfiguration#auth0OAuthErrorPagePath()} con {@code ?code=}
+ * para el portlet React {@code auth0_error}; si {@code email_not_verified}, a
  * {@link Auth0IntegrationConfiguration#auth0EmailNotVerifiedPagePath()}; si no, intercambio de código,
  * validación de {@code id_token}, usuario Liferay, cookie de puente para {@code AutoLogin} y
  * redirección según {@link Auth0IntegrationConfiguration#postLoginRedirectPath()}.
@@ -115,22 +117,24 @@ public class Auth0CallbackResource {
 
 				_log.warn("Auth0 login falló: email no verificado");
 
-				return _seeOtherToFriendlyPage(
-					httpServletRequest, _emailNotVerifiedPagePath());
+				return _seeOtherViaAuth0LogoutThenFriendlyPage(
+					httpServletRequest, _configuration,
+					_emailNotVerifiedPagePath());
 			}
 
 			if ("access_denied".equals(error)) {
 				_log.warn("Auth0 login denegado por el usuario");
 
-				return _seeOtherToFriendlyPage(
-					httpServletRequest,
+				return _seeOtherViaAuth0LogoutThenFriendlyPage(
+					httpServletRequest, _configuration,
 					_auth0OAuthErrorRedirectWithCode("access_denied"));
 			}
 
 			_log.error("Error en callback Auth0: " + error);
 
-			return _seeOtherToFriendlyPage(
-				httpServletRequest, _auth0OAuthErrorRedirectWithCode(error));
+			return _seeOtherViaAuth0LogoutThenFriendlyPage(
+				httpServletRequest, _configuration,
+				_auth0OAuthErrorRedirectWithCode(error));
 		}
 
 		if (Validator.isBlank(code) || Validator.isBlank(state)) {
@@ -253,8 +257,8 @@ public class Auth0CallbackResource {
 			_clearOAuthFlowCookies(
 				httpServletResponse, secureCookies, sameSite);
 
-			return _seeOtherToFriendlyPage(
-				httpServletRequest,
+			return _seeOtherViaAuth0LogoutThenFriendlyPage(
+				httpServletRequest, configuration,
 				_auth0OAuthErrorRedirectWithCode("portal_access_denied"));
 		}
 		catch (IllegalStateException | IllegalArgumentException e) {
@@ -372,18 +376,60 @@ public class Auth0CallbackResource {
 		return map;
 	}
 
-	private static Response _seeOtherToFriendlyPage(
+	/**
+	 * Cierra la sesión en Auth0 ({@code /v2/logout}) y deja {@code returnTo} en la página del portal
+	 * indicada, para que un nuevo {@code /authorize} vuelva a pedir credenciales. Si no hay
+	 * configuración o {@code clientId}, redirige solo al portal.
+	 */
+	private static Response _seeOtherViaAuth0LogoutThenFriendlyPage(
+			HttpServletRequest httpServletRequest,
+			Auth0IntegrationConfiguration configuration,
+			String pathWithOptionalQuery) {
+
+		if ((configuration == null) ||
+			Validator.isBlank(configuration.clientId())) {
+
+			return _seeOtherToFriendlyPage(
+				httpServletRequest, pathWithOptionalQuery);
+		}
+
+		String returnToAbsolute = _absolutePortalUrl(
+			httpServletRequest, pathWithOptionalQuery);
+
+		try {
+			String logoutUrl = Auth0OAuthUrls.buildV2LogoutUrl(
+				configuration, returnToAbsolute);
+
+			return Response.seeOther(URI.create(logoutUrl)).build();
+		}
+		catch (IllegalStateException e) {
+			return _seeOtherToFriendlyPage(
+				httpServletRequest, pathWithOptionalQuery);
+		}
+	}
+
+	private static String _absolutePortalUrl(
 		HttpServletRequest httpServletRequest, String pathWithOptionalQuery) {
 
 		String portalUrl = PortalUtil.getPortalURL(
 			httpServletRequest, httpServletRequest.isSecure());
 
-		if (!pathWithOptionalQuery.startsWith("/")) {
-			pathWithOptionalQuery = "/" + pathWithOptionalQuery;
+		String path = pathWithOptionalQuery;
+
+		if (!path.startsWith("/")) {
+			path = "/" + path;
 		}
 
+		return portalUrl + path;
+	}
+
+	private static Response _seeOtherToFriendlyPage(
+		HttpServletRequest httpServletRequest, String pathWithOptionalQuery) {
+
 		return Response.seeOther(
-			URI.create(portalUrl + pathWithOptionalQuery)).build();
+			URI.create(
+				_absolutePortalUrl(httpServletRequest, pathWithOptionalQuery))
+		).build();
 	}
 
 	private static Response _badRequest(String message) {
