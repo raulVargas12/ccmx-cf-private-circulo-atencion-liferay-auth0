@@ -19,14 +19,15 @@ Aplicar un patrón consistente de **build Gradle** para módulos (típicamente O
 4. Ejecuta (si procede) `gradlew clean test jar` o el task del módulo.
 
 ## Patrones útiles (preferidos en este contexto)
-### Wrapper
+### Wrapper y plugins Liferay
 - Preferir usar **`gradlew`** (no el Gradle instalado globalmente).
 - Si hay fallos de versión: alinear `gradle-wrapper.properties` con el plugin/tooling requerido por Liferay.
+  - **Importante:** El plugin `com.liferay.gradle.plugins:13.0.16` (usado en Liferay 7.3) **no es compatible** con Gradle 7+ ni 8+ debido a tareas antiguas como `BuildCSSTask` y configuración `compile`. Usa **Gradle 6.9.x** en el wrapper.
 
-### Dependencias: scopes típicos
-- `compileOnly`: APIs provistas por el runtime (p.ej. Liferay)
-- `implementation`: librerías que deben ir dentro del bundle
-- `testImplementation`: sólo tests
+### Dependencias: scopes típicos en Liferay
+- `compileOnly`: APIs provistas por el runtime (p.ej. Liferay, OSGi, JAX-RS).
+- `compileInclude`: librerías de terceros que deben ir dentro del bundle (Bnd las empaquetará). **Nota:** en Gradle 6, dependencias con variantes complejas (como Guava 32+ transitiva) pueden requerir `resolutionStrategy { force ... }`.
+- `testImplementation`: sólo tests.
 
 Ejemplo:
 
@@ -34,8 +35,8 @@ Ejemplo:
 dependencies {
     compileOnly group: "com.liferay.portal", name: "release.dxp.api", version: "7.3.10.u32"
 
-    implementation group: "com.auth0", name: "java-jwt", version: "REPLACE_ME"
-    implementation group: "com.auth0", name: "jwks-rsa", version: "REPLACE_ME"
+    compileInclude group: "com.auth0", name: "java-jwt", version: "3.19.4"
+    compileInclude group: "com.auth0", name: "jwks-rsa", version: "0.22.1"
 }
 ```
 

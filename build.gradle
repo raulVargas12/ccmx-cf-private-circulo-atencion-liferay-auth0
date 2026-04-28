@@ -39,6 +39,13 @@ dependencies {
 	compileInclude group: "com.auth0", name: "jwks-rsa", version: "0.22.1"
 }
 
+// Guava 32+ publica variantes jre/android; Gradle 6 no elige entre ellas y falla :jar (jwks-rsa).
+configurations.all {
+	resolutionStrategy {
+		force "com.google.guava:guava:31.1-jre"
+	}
+}
+
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
