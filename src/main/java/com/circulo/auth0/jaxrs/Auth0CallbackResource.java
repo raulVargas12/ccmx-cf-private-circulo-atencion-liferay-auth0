@@ -51,6 +51,8 @@ import org.osgi.service.component.annotations.Reference;
  * {@link Auth0IntegrationConfiguration#auth0EmailNotVerifiedPagePath()}; si no, intercambio de código,
  * validación de {@code id_token}, usuario Liferay, cookie de puente para {@code AutoLogin} y
  * redirección según {@link Auth0IntegrationConfiguration#postLoginRedirectPath()}.
+ * Los demás fallos del callback redirigen a {@link Auth0IntegrationConfiguration#auth0OAuthErrorPagePath()}
+ * con códigos {@link Auth0Constants} (p. ej. {@link Auth0Constants#CALLBACK_ERROR_INVALID_STATE}).
  */
 @Component(
 	configurationPid = Auth0IntegrationConfiguration.PID,
@@ -138,7 +140,11 @@ public class Auth0CallbackResource {
 		}
 
 		if (Validator.isBlank(code) || Validator.isBlank(state)) {
-			return _badRequest("Parámetros code y state son obligatorios");
+			_log.warn("Auth0 callback: code o state ausentes");
+
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, _configuration,
+				Auth0Constants.CALLBACK_ERROR_MISSING_PARAMS);
 		}
 
 		Auth0IntegrationConfiguration configuration = _configuration;
@@ -146,8 +152,9 @@ public class Auth0CallbackResource {
 		if (configuration == null) {
 			_log.error("Auth0 callback: configuración OSGi no disponible");
 
-			return _serverError(
-				"Configuración Auth0 no disponible. Compruebe System Settings / OSGi.");
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, null,
+				Auth0Constants.CALLBACK_ERROR_CONFIGURATION_UNAVAILABLE);
 		}
 
 		String expectedState = CookieUtil.getCookie(
@@ -157,7 +164,9 @@ public class Auth0CallbackResource {
 			_log.error(
 				"Auth0 callback: state no coincide con el cookie (posible CSRF)");
 
-			return _forbidden("State no válido");
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, configuration,
+				Auth0Constants.CALLBACK_ERROR_INVALID_STATE);
 		}
 
 		String codeVerifier = CookieUtil.getCookie(
@@ -166,8 +175,9 @@ public class Auth0CallbackResource {
 			originalRequest, Auth0Constants.AUTH0_NONCE);
 
 		if (Validator.isBlank(codeVerifier) || Validator.isBlank(nonce)) {
-			return _badRequest(
-				"Datos PKCE ausentes; reinicie el login desde /o/auth/login");
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, configuration,
+				Auth0Constants.CALLBACK_ERROR_PKCE_MISSING);
 		}
 
 		boolean secureCookies = configuration.cookiesSecure();
@@ -264,14 +274,49 @@ public class Auth0CallbackResource {
 		catch (IllegalStateException | IllegalArgumentException e) {
 			_log.error("Auth0 callback: " + e.getMessage(), e);
 
-			return _serverError(e.getMessage());
+			_clearOAuthFlowCookies(
+				httpServletResponse, configuration.cookiesSecure(),
+				configuration.cookieSameSite());
+
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, configuration,
+				Auth0Constants.CALLBACK_ERROR_LOGIN_PROCESS);
 		}
 		catch (Exception e) {
 			_log.error("Auth0 callback: fallo inesperado", e);
 
-			return _serverError(
-				"Error al completar el inicio de sesión. Intente de nuevo.");
+			_clearOAuthFlowCookies(
+				httpServletResponse, configuration.cookiesSecure(),
+				configuration.cookieSameSite());
+
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, configuration,
+				Auth0Constants.CALLBACK_ERROR_UNEXPECTED);
 		}
+	}
+
+	/**
+	 * Redirige a {@link Auth0IntegrationConfiguration#auth0OAuthErrorPagePath()} con
+	 * {@code ?code=}, cierre de sesión Auth0 si hay {@code clientId}, y limpia cookies del flujo
+	 * cuando hay configuración disponible.
+	 */
+	private Response _redirectCallbackFriendlyError(
+			HttpServletRequest httpServletRequest,
+			HttpServletResponse httpServletResponse,
+			Auth0IntegrationConfiguration configuration,
+			String callbackErrorCode) {
+
+		if (configuration != null) {
+			_clearOAuthFlowCookies(
+				httpServletResponse, configuration.cookiesSecure(),
+				configuration.cookieSameSite());
+		}
+
+		String relativePathWithQuery = _auth0OAuthErrorRedirectWithCode(
+			callbackErrorCode);
+
+		return _seeOtherViaAuth0LogoutThenFriendlyPage(
+			httpServletRequest, configuration, relativePathWithQuery);
 	}
 
 	/**
@@ -430,27 +475,6 @@ public class Auth0CallbackResource {
 			URI.create(
 				_absolutePortalUrl(httpServletRequest, pathWithOptionalQuery))
 		).build();
-	}
-
-	private static Response _badRequest(String message) {
-		return Response.status(Response.Status.BAD_REQUEST)
-			.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
-			.entity(message)
-			.build();
-	}
-
-	private static Response _forbidden(String message) {
-		return Response.status(Response.Status.FORBIDDEN)
-			.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
-			.entity(message)
-			.build();
-	}
-
-	private static Response _serverError(String message) {
-		return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-			.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
-			.entity(message)
-			.build();
 	}
 
 }

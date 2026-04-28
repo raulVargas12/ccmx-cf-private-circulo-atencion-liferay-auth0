@@ -75,4 +75,26 @@ public final class Auth0Constants {
 
 	public static final String RESPONSE_TYPE_CODE = "code";
 
+	// --- Query {@code code} en página error-auth tras fallos del callback ---
+
+	/** Faltan {@code code} o {@code state} en la vuelta del IdP. */
+	public static final String CALLBACK_ERROR_MISSING_PARAMS =
+		"callback_missing_params";
+
+	/** Configuración OSGi del módulo no disponible. */
+	public static final String CALLBACK_ERROR_CONFIGURATION_UNAVAILABLE =
+		"configuration_unavailable";
+
+	/** Cookie {@code AUTH0_STATE} ausente o no coincide con {@code state} (CSRF). */
+	public static final String CALLBACK_ERROR_INVALID_STATE = "invalid_state";
+
+	/** Faltan cookies PKCE o nonce del flujo. */
+	public static final String CALLBACK_ERROR_PKCE_MISSING = "pkce_missing";
+
+	/** Fallo de intercambio de código, id_token, validación o aprovisionamiento. */
+	public static final String CALLBACK_ERROR_LOGIN_PROCESS = "login_process_error";
+
+	/** Cualquier otro error no clasificado. */
+	public static final String CALLBACK_ERROR_UNEXPECTED = "unexpected_login_error";
+
 }

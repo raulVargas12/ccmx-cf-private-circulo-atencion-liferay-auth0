@@ -18,7 +18,7 @@ La aplicación usa base `osgi.jaxrs.application.base=/auth` (prefijo Liferay `/o
 
 Las respuestas **303 See Other** envían al navegador primero a **Auth0 `/v2/logout`** (con `client_id` y `returnTo` = URL absoluta de la página del portal), para **cerrar la sesión en Auth0**; Auth0 redirige después a **`{portalUrl}`** + ruta (y query). Así un nuevo `/o/auth/login` vuelve a mostrar el login de credenciales. Si falta `clientId` o configuración, se omite el logout y solo se redirige al portal.
 
-Las **400 / 403 / 500** devuelven **texto plano en la misma petición al callback** (sin redirección amigable).
+Los fallos del callback que antes respondían **400 / 403 / 500** en texto plano ahora **redirigen** a **`auth0OAuthErrorPagePath`** con **`?code=`** (constantes en `Auth0Constants`), mismos mecanismos de logout y cookies que el resto de errores.
 
 **Importante:** en el dashboard Auth0, **Allowed Logout URLs** debe incluir las URLs absolutas de las páginas de error (con query `?code=…` si aplica), o patrones que Auth0 permita para `returnTo`.
 
@@ -34,20 +34,20 @@ Si la configuración OSGi no está cargada o no hay `clientId`, en estos ramos s
 
 ### Sin `error` de Auth0: validación previa al intercambio de código
 
-| Condición | Respuesta HTTP | Cuerpo (ejemplo) |
-|-----------|----------------|------------------|
-| Faltan `code` o `state` | **400** | Parámetros obligatorios |
-| `_configuration` nulo | **500** | Configuración Auth0 no disponible |
-| Cookie `AUTH0_STATE` vacía o distinta de `state` | **403** | State no válido (posible CSRF) |
-| Faltan cookies PKCE (`AUTH0_CODE_VERIFIER` / `AUTH0_NONCE`) | **400** | Datos PKCE ausentes |
+| Condición | Comportamiento |
+|-----------|----------------|
+| Faltan `code` o `state` | **303** → logout Auth0 (si aplica) → **`auth0OAuthErrorPagePath`** + `?code=callback_missing_params` |
+| `_configuration` nulo | Igual con `?code=configuration_unavailable` |
+| Cookie `AUTH0_STATE` vacía o distinta de `state` (posible CSRF) | Limpieza cookies flujo; **303** → logout Auth0 → `?code=invalid_state` |
+| Faltan cookies PKCE / nonce | Limpieza cookies flujo; **303** → logout Auth0 → `?code=pkce_missing` |
 
 ### Tras intercambio de código (dentro del flujo de login)
 
 | Condición | Comportamiento |
 |-----------|----------------|
 | **`PortalAccessDeniedException`** (política app/roles en `id_token`, etc.) | Limpieza de sesión/cookies del flujo; **303** a **logout Auth0** → **`auth0OAuthErrorPagePath`** + `?code=portal_access_denied`. |
-| **`IllegalStateException`** / **`IllegalArgumentException`** | **500** con mensaje de error en texto (sin redirect). Incluye fallos típicos de token/`id_token`/validación según mensaje. |
-| Otra **`Exception`** | **500** genérico (*Error al completar el inicio de sesión…*). |
+| **`IllegalStateException`** / **`IllegalArgumentException`** | Limpieza cookies flujo; **303** → logout Auth0 → `?code=login_process_error` (detalle solo en logs). |
+| Otra **`Exception`** | Limpieza cookies flujo; **303** → logout Auth0 → `?code=unexpected_login_error`. |
 
 ### Login correcto (referencia)
 
