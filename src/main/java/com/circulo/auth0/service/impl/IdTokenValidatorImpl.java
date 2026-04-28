@@ -20,6 +20,8 @@ import com.liferay.portal.kernel.util.Validator;
 
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 import org.osgi.service.component.annotations.Component;
@@ -150,6 +152,9 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 		if (!issuerValid) {
 			throw new RuntimeException("Issuer inválido");
 		}
+
+		_assertJwtTemporalClaims(jwt);
+		_assertAuthorizedPartyIfNeeded(jwt, clientId);
 
 		if (_log.isDebugEnabled()) {
 			_log.debug(
@@ -300,6 +305,45 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 		}
 
 		return jwt.getClaim(name).asString();
+	}
+
+	private static void _assertJwtTemporalClaims(DecodedJWT jwt) {
+		Date issuedAt = jwt.getIssuedAt();
+
+		if (issuedAt != null) {
+			long nowWithLeeway = System.currentTimeMillis() + (_EXP_LEEWAY_SECONDS * 1000L);
+
+			if (issuedAt.getTime() > nowWithLeeway) {
+				throw new IllegalStateException("id_token con claim iat inválido");
+			}
+		}
+
+		Date notBefore = jwt.getNotBefore();
+
+		if (notBefore != null) {
+			long nowWithLeeway = System.currentTimeMillis() + (_EXP_LEEWAY_SECONDS * 1000L);
+
+			if (notBefore.getTime() > nowWithLeeway) {
+				throw new IllegalStateException("id_token con claim nbf inválido");
+			}
+		}
+	}
+
+	private static void _assertAuthorizedPartyIfNeeded(
+		DecodedJWT jwt, String clientId) {
+
+		List<String> audiences = jwt.getAudience();
+
+		if ((audiences == null) || (audiences.size() <= 1)) {
+			return;
+		}
+
+		String azp = _claimString(jwt, "azp");
+
+		if (Validator.isBlank(azp) || !clientId.equals(azp)) {
+			throw new IllegalStateException(
+				"id_token inválido: azp ausente o no coincide con clientId");
+		}
 	}
 
 }

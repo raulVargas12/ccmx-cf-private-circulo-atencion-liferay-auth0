@@ -130,7 +130,7 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 	}
 
 	private static int _ttlSeconds(long expiresInSeconds) {
-		long ttl = (expiresInSeconds > 0) ? expiresInSeconds : 3600L;
+		long ttl = (expiresInSeconds > 0) ? expiresInSeconds : 300L;
 
 		if (ttl < MIN_TTL_SECONDS) {
 			ttl = MIN_TTL_SECONDS;

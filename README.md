@@ -12,7 +12,7 @@ La aplicación usa base `osgi.jaxrs.application.base=/auth` (prefijo Liferay `/o
 |--------|------|---------|
 | GET | `/o/auth/login` | `Auth0LoginResource` |
 | GET | `/o/auth/callback` | `Auth0CallbackResource` |
-| GET | `/o/auth/logout` | `Auth0LogoutResource` |
+| POST | `/o/auth/logout` | `Auth0LogoutResource` |
 
 ## Callback (`GET /o/auth/callback`): errores y redirecciones
 
@@ -97,6 +97,15 @@ Si la app o los roles no cumplen la política del token (`PortalAccessDeniedExce
 ## Logs
 
 En PROD conviene dejar el paquete `com.circulo.auth0` en **INFO** o **WARN**; **DEBUG** solo en entornos locales o de diagnóstico temporal. El módulo evita en logs dominios completos de Auth0, URIs JWKS, `sub` en INFO y listas de roles en texto claro; detalle de `userId` queda en DEBUG en el callback.
+
+## Criterios de aceptación operativa
+
+- Ningún endpoint de cambio de estado debe operar por `GET`; logout se invoca por `POST` con validación `Origin/Referer`.
+- Los errores de login/logout no exponen mensajes internos al cliente; los detalles quedan en log de servidor.
+- El callback rechaza `id_token` con `iat`/`nbf` inválidos y exige `azp` cuando la audiencia del token trae múltiples valores.
+- El aprovisionamiento es idempotente en concurrencia: si hay alta simultánea por email, se recupera el usuario ya creado.
+- El cache de JWKS soporta `kid` desconocido con negative caching corto y evita recargas redundantes en ráfaga.
+- Los stores de token respetan vencimiento real y no conservan entradas ya expiradas.
 
 ## Compilación y despliegue
 

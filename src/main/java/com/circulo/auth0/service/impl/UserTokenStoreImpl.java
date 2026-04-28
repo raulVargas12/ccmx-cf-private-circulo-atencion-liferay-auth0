@@ -49,7 +49,13 @@ public class UserTokenStoreImpl implements UserTokenStore {
 
 		long ttlMillis = expiresAt - System.currentTimeMillis();
 
-		long ttlSecondsLong = ttlMillis / 1000L;
+		if (ttlMillis <= 0) {
+			_portalCache.remove(userId);
+
+			return;
+		}
+
+		long ttlSecondsLong = (ttlMillis + 999L) / 1000L;
 
 		if (ttlSecondsLong < MIN_TTL_SECONDS) {
 			ttlSecondsLong = MIN_TTL_SECONDS;

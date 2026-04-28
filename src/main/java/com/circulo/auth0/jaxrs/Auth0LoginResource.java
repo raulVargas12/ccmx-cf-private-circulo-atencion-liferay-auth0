@@ -21,12 +21,14 @@ import javax.ws.rs.core.Response;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Modified;
 
 /**
  * {@code GET /o/auth/login} — inicia Authorization Code + PKCE y redirige a Auth.
  */
 @Component(
+	configurationPolicy = ConfigurationPolicy.REQUIRE,
 	configurationPid = Auth0IntegrationConfiguration.PID,
 	immediate = true,
 	property = {
@@ -76,11 +78,11 @@ public class Auth0LoginResource {
 			return Response.status(Response.Status.FOUND).location(location).build();
 		}
 		catch (IllegalStateException | IllegalArgumentException e) {
-			_log.error("Auth0 login: " + e.getMessage(), e);
+			_log.error("Auth0 login: error al preparar redirección de autorización", e);
 
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 				.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
-				.entity(e.getMessage())
+				.entity("No fue posible iniciar el proceso de autenticación.")
 				.build();
 		}
 	}

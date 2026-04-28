@@ -19,7 +19,7 @@ import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import javax.ws.rs.GET;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
@@ -28,14 +28,16 @@ import javax.ws.rs.core.Response;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
- * {@code GET /o/auth/logout} — invalida sesión Liferay, limpia cookies/tokens y redirige al
+ * {@code POST /o/auth/logout} — invalida sesión Liferay, limpia cookies/tokens y redirige al
  * logout federado de Auth0.
  */
 @Component(
+	configurationPolicy = ConfigurationPolicy.REQUIRE,
 	configurationPid = Auth0IntegrationConfiguration.PID,
 	immediate = true,
 	property = {
@@ -64,7 +66,7 @@ public class Auth0LogoutResource {
 			Auth0IntegrationConfiguration.class, properties);
 	}
 
-	@GET
+	@POST
 	@Produces(MediaType.WILDCARD)
 	public Response logout(
 			@Context HttpServletRequest httpServletRequest,
@@ -84,6 +86,15 @@ public class Auth0LogoutResource {
 
 		HttpServletRequest originalRequest = PortalUtil.getOriginalServletRequest(
 			httpServletRequest);
+
+		if (!_isSameOriginPost(originalRequest)) {
+			_log.warn("Auth0 logout rechazado por validación CSRF (origin/referer)");
+
+			return Response.status(Response.Status.FORBIDDEN)
+				.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
+				.entity("No se pudo validar la solicitud de cierre de sesión.")
+				.build();
+		}
 
 		long userId = PortalUtil.getUserId(originalRequest);
 
@@ -122,13 +133,72 @@ public class Auth0LogoutResource {
 				URI.create(logoutUrl)).build();
 		}
 		catch (IllegalStateException e) {
-			_log.error("Auth0 logout: " + e.getMessage());
+			_log.error("Auth0 logout: error al construir URL de logout federado", e);
 
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 				.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
-				.entity(e.getMessage())
+				.entity("No fue posible completar el cierre de sesión.")
 				.build();
 		}
+	}
+
+	private static boolean _isSameOriginPost(HttpServletRequest request) {
+		String origin = request.getHeader("Origin");
+		String referer = request.getHeader("Referer");
+
+		if (Validator.isBlank(origin) && Validator.isBlank(referer)) {
+			return false;
+		}
+
+		String portalUrl = PortalUtil.getPortalURL(request, request.isSecure());
+
+		try {
+			URI expected = URI.create(portalUrl);
+			URI candidate = Validator.isNotNull(origin) ? URI.create(origin) : URI.create(referer);
+
+			return _sameOrigin(expected, candidate);
+		}
+		catch (IllegalArgumentException e) {
+			return false;
+		}
+	}
+
+	private static boolean _sameOrigin(URI expected, URI candidate) {
+		if ((expected == null) || (candidate == null)) {
+			return false;
+		}
+
+		if (!String.valueOf(expected.getScheme()).equalsIgnoreCase(
+				String.valueOf(candidate.getScheme()))) {
+
+			return false;
+		}
+
+		if (!String.valueOf(expected.getHost()).equalsIgnoreCase(
+				String.valueOf(candidate.getHost()))) {
+
+			return false;
+		}
+
+		return _normalizePort(expected) == _normalizePort(candidate);
+	}
+
+	private static int _normalizePort(URI uri) {
+		int port = uri.getPort();
+
+		if (port >= 0) {
+			return port;
+		}
+
+		if ("https".equalsIgnoreCase(uri.getScheme())) {
+			return 443;
+		}
+
+		if ("http".equalsIgnoreCase(uri.getScheme())) {
+			return 80;
+		}
+
+		return -1;
 	}
 
 	private static void _clearOAuthCookies(

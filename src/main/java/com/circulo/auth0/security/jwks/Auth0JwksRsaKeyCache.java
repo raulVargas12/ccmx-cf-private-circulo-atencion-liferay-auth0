@@ -13,6 +13,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.interfaces.RSAPublicKey;
@@ -29,6 +30,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class Auth0JwksRsaKeyCache {
 
 	private static final long _TTL_MS = 10L * 60L * 1000L;
+
+	private static final long _STALE_FALLBACK_MS = 5L * 60L * 1000L;
+
+	private static final long _NEGATIVE_KID_TTL_MS = 30L * 1000L;
 
 	private static final int _CONNECT_TIMEOUT_MS = 15000;
 
@@ -61,6 +66,9 @@ public final class Auth0JwksRsaKeyCache {
 		private final ConcurrentHashMap<String, RSAPublicKey> _keysByKid =
 			new ConcurrentHashMap<>();
 
+		private final ConcurrentHashMap<String, Long> _negativeKids =
+			new ConcurrentHashMap<>();
+
 		private volatile long _loadedAtMillis;
 
 		RSAPublicKey getKey(String jwksUrl, String kid) throws Exception {
@@ -77,24 +85,60 @@ public final class Auth0JwksRsaKeyCache {
 					return cached;
 				}
 
-				_reload(jwksUrl);
-				_loadedAtMillis = System.currentTimeMillis();
-
-				cached = _keysByKid.get(kid);
-
-				if (cached == null) {
-					_reload(jwksUrl);
-					_loadedAtMillis = System.currentTimeMillis();
-					cached = _keysByKid.get(kid);
-				}
-
-				if (cached == null) {
+				if (!cacheEmpty && !expired && _isNegativeKidCached(kid, now)) {
 					throw new SigningKeyNotFoundException(
 						"No hay clave RSA en JWKS para el kid indicado", null);
 				}
 
+				try {
+					_reload(jwksUrl);
+					_loadedAtMillis = System.currentTimeMillis();
+				}
+				catch (Exception e) {
+					if ((cached != null) && !_isHardExpired(now)) {
+						return cached;
+					}
+
+					throw e;
+				}
+
+				cached = _keysByKid.get(kid);
+
+				if (cached == null) {
+					_negativeKids.put(kid, now);
+
+					throw new SigningKeyNotFoundException(
+						"No hay clave RSA en JWKS para el kid indicado", null);
+				}
+
+				_negativeKids.remove(kid);
+
 				return cached;
 			}
+		}
+
+		private boolean _isHardExpired(long now) {
+			if (_loadedAtMillis <= 0) {
+				return true;
+			}
+
+			return (now - _loadedAtMillis) > (_TTL_MS + _STALE_FALLBACK_MS);
+		}
+
+		private boolean _isNegativeKidCached(String kid, long now) {
+			Long negativeAt = _negativeKids.get(kid);
+
+			if (negativeAt == null) {
+				return false;
+			}
+
+			if ((now - negativeAt) <= _NEGATIVE_KID_TTL_MS) {
+				return true;
+			}
+
+			_negativeKids.remove(kid, negativeAt);
+
+			return false;
 		}
 
 		private void _reload(String jwksUrl) throws Exception {
@@ -109,6 +153,7 @@ public final class Auth0JwksRsaKeyCache {
 			}
 
 			_keysByKid.clear();
+			_negativeKids.clear();
 
 			for (int i = 0; i < keys.length(); i++) {
 				JSONObject keyJson = keys.getJSONObject(i);
@@ -139,7 +184,7 @@ public final class Auth0JwksRsaKeyCache {
 			HttpURLConnection connection = null;
 
 			try {
-				URL url = new URL(jwksUrl);
+				URL url = URI.create(jwksUrl).toURL();
 
 				connection = (HttpURLConnection)url.openConnection();
 

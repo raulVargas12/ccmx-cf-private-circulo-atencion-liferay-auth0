@@ -26,6 +26,8 @@ import org.osgi.service.component.annotations.Reference;
 @Component(immediate = true, service = UserProvisioningService.class)
 public class UserProvisioningServiceImpl implements UserProvisioningService {
 
+	private static final String _AUTH0_ERC_PREFIX = "auth0:";
+
 	@Reference
 	private UserLocalService _userLocalService;
 
@@ -44,9 +46,17 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 				"No se puede aprovisionar usuario sin email");
 		}
 
-		User user = _userLocalService.fetchUserByEmailAddress(companyId, email);
+		User user = _fetchByStableIdentity(companyId, subject);
 
 		if (user != null) {
+			return user.getUserId();
+		}
+
+		user = _userLocalService.fetchUserByEmailAddress(companyId, email);
+
+		if (user != null) {
+			_backfillStableIdentityIfAllowed(user, subject);
+
 			return user.getUserId();
 		}
 
@@ -61,12 +71,28 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 
 		String password1 = com.liferay.portal.kernel.util.PwdGenerator.getPassword();
 
-		// addUser 7.3 (sin OpenID): el 6.º boolean es autoScreenName. passwordReset lo impone la política; SSO lo limpia abajo.
-		user = _userLocalService.addUser(
-			creatorUserId, companyId, false, password1, password1, false,
-			screenName, email, PortalUtil.getLocale(request), firstName, "",
-			lastName, 0, 0, true, 1, 1, 1970, "", new long[0], new long[0],
-			new long[0], new long[0], false, serviceContext);
+		try {
+			// addUser 7.3 (sin OpenID): el 6.º boolean es autoScreenName. passwordReset lo impone la política; SSO lo limpia abajo.
+			user = _userLocalService.addUser(
+				creatorUserId, companyId, false, password1, password1, false,
+				screenName, email, PortalUtil.getLocale(request), firstName, "",
+				lastName, 0, 0, true, 1, 1, 1970, "", new long[0], new long[0],
+				new long[0], new long[0], false, serviceContext);
+		}
+		catch (Exception e) {
+			User concurrentUser = _userLocalService.fetchUserByEmailAddress(
+				companyId, email);
+
+			if (concurrentUser != null) {
+				_backfillStableIdentityIfAllowed(concurrentUser, subject);
+
+				return concurrentUser.getUserId();
+			}
+
+			throw e;
+		}
+
+		_backfillStableIdentityIfAllowed(user, subject);
 
 		_userLocalService.updateStatus(
 			user.getUserId(), WorkflowConstants.STATUS_APPROVED, serviceContext);
@@ -145,6 +171,50 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 		s = s.replaceAll("[^a-z0-9._-]+", "");
 
 		return s.isEmpty() ? null : s;
+	}
+
+	private User _fetchByStableIdentity(long companyId, String subject) {
+		String stableErc = _stableExternalReferenceCode(subject);
+
+		if (stableErc == null) {
+			return null;
+		}
+
+		try {
+			return _userLocalService.fetchUserByExternalReferenceCode(
+				companyId, stableErc);
+		}
+		catch (Exception e) {
+			return null;
+		}
+	}
+
+	private void _backfillStableIdentityIfAllowed(User user, String subject) {
+		String stableErc = _stableExternalReferenceCode(subject);
+
+		if ((user == null) || Validator.isBlank(stableErc)) {
+			return;
+		}
+
+		String currentErc = user.getExternalReferenceCode();
+
+		if (Validator.isBlank(currentErc) || stableErc.equals(currentErc)) {
+			try {
+				user.setExternalReferenceCode(stableErc);
+				_userLocalService.updateUser(user);
+			}
+			catch (Exception e) {
+				// El login no debe fallar por una imposibilidad de backfill del vínculo estable.
+			}
+		}
+	}
+
+	private static String _stableExternalReferenceCode(String subject) {
+		if (Validator.isBlank(subject)) {
+			return null;
+		}
+
+		return _AUTH0_ERC_PREFIX + subject.trim();
 	}
 
 }
