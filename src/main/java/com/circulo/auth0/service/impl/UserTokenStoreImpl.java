@@ -1,5 +1,6 @@
 package com.circulo.auth0.service.impl;
 
+import com.circulo.auth0.security.crypto.TokenCipher;
 import com.circulo.auth0.service.UserTokenStore;
 
 import com.liferay.portal.kernel.cache.MultiVMPool;
@@ -68,7 +69,7 @@ public class UserTokenStoreImpl implements UserTokenStore {
 		int ttlSeconds = (int)ttlSecondsLong;
 
 		UserAccessTokenEntry entry = new UserAccessTokenEntry(
-			accessToken, expiresAt);
+			TokenCipher.encrypt(accessToken), expiresAt);
 
 		_portalCache.put(userId, entry, ttlSeconds);
 	}
@@ -93,7 +94,7 @@ public class UserTokenStoreImpl implements UserTokenStore {
 			return null;
 		}
 
-		return entry._token;
+		return TokenCipher.decrypt(entry._token);
 	}
 
 	@Override

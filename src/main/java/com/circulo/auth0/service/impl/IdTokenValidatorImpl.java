@@ -153,6 +153,12 @@ public class IdTokenValidatorImpl implements IdTokenValidator {
 			throw new RuntimeException("Issuer inválido");
 		}
 
+		Claim emailVerifiedClaim = jwt.getClaim("email_verified");
+
+		if (emailVerifiedClaim.isNull() || !Boolean.TRUE.equals(emailVerifiedClaim.asBoolean())) {
+			throw new IllegalStateException("El correo electrónico no ha sido verificado en el proveedor de identidad");
+		}
+
 		_assertJwtTemporalClaims(jwt);
 		_assertAuthorizedPartyIfNeeded(jwt, clientId);
 

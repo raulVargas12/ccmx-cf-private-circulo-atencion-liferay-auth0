@@ -1,6 +1,7 @@
 package com.circulo.auth0.service.impl;
 
 import com.circulo.auth0.constants.Auth0Constants;
+import com.circulo.auth0.security.crypto.TokenCipher;
 import com.circulo.auth0.service.SessionTokenStore;
 
 import com.liferay.portal.kernel.cache.MultiVMPool;
@@ -66,7 +67,10 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 		}
 
 		OAuthSessionBundle bundle = new OAuthSessionBundle(
-			accessToken, idToken, refreshToken, expiresAtEpochSeconds);
+			TokenCipher.encrypt(accessToken),
+			TokenCipher.encrypt(idToken),
+			TokenCipher.encrypt(refreshToken),
+			expiresAtEpochSeconds);
 
 		int ttlSeconds = _ttlSeconds(expiresInSeconds);
 
@@ -109,7 +113,7 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 			return null;
 		}
 
-		return bundle._accessToken;
+		return TokenCipher.decrypt(bundle._accessToken);
 	}
 
 	private static String _legacyAccessToken(HttpSession httpSession) {
