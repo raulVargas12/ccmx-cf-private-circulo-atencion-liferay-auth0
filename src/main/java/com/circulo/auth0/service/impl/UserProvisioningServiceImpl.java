@@ -72,12 +72,29 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 		String password1 = com.liferay.portal.kernel.util.PwdGenerator.getPassword();
 
 		try {
-			// addUser 7.3 (sin OpenID): el 6.º boolean es autoScreenName. passwordReset lo impone la política; SSO lo limpia abajo.
+			// addUser 7.3: firma recomendada sin OpenID ni Facebook (evita arrays vacíos y deprecación de firmas largas)
 			user = _userLocalService.addUser(
-				creatorUserId, companyId, false, password1, password1, false,
-				screenName, email, PortalUtil.getLocale(request), firstName, "",
-				lastName, 0, 0, true, 1, 1, 1970, "", new long[0], new long[0],
-				new long[0], new long[0], false, serviceContext);
+				creatorUserId, 
+				companyId, 
+				false, // autoPassword
+				password1, 
+				password1, 
+				false, // autoScreenName
+				screenName, 
+				email, 
+				PortalUtil.getLocale(request), 
+				firstName, 
+				"", // middleName
+				lastName, 
+				0, 0, true, 1, 1, 1970, // prefixId, suffixId, male, birthday (mes, dia, año)
+				"", // jobTitle
+				null, // groupIds
+				null, // organizationIds
+				null, // roleIds
+				null, // userGroupIds
+				false, // sendEmail
+				serviceContext
+			);
 		}
 		catch (Exception e) {
 			User concurrentUser = _userLocalService.fetchUserByEmailAddress(
@@ -100,6 +117,18 @@ public class UserProvisioningServiceImpl implements UserProvisioningService {
 		//se salta el reset de cotraseña y se marca como verificado el email para no pedirlas en Liferay durante el alta
 		_userLocalService.updatePasswordReset(user.getUserId(), false);
 		_userLocalService.updateEmailAddressVerified(user.getUserId(), true);
+
+		// Obtener instancia fresca para evitar StaleObjectStateException
+		User freshUser = _userLocalService.getUser(user.getUserId());
+
+		// saltar la pregunta secreta:
+		freshUser.setReminderQueryQuestion("auth0-managed");
+		freshUser.setReminderQueryAnswer("auth0-managed");
+		// saltar los términos de uso:
+		freshUser.setAgreedToTermsOfUse(true);
+
+		_userLocalService.updateUser(freshUser);
+
 		return user.getUserId();
 	}
 

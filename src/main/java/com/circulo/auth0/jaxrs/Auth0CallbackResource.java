@@ -207,7 +207,7 @@ public class Auth0CallbackResource {
 			CookieUtil.addCookie(
 				httpServletResponse, Auth0Constants.AUTH0_LOGIN_TOKEN, loginToken,
 				Auth0Constants.AUTH0_LOGIN_TOKEN_MAX_AGE_SECONDS, secureCookies,
-				"Strict");
+				sameSite);
 
 			HttpSession session = originalRequest.getSession(true);
 

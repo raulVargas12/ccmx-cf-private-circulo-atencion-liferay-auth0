@@ -1,18 +1,23 @@
 package com.circulo.auth0.service.impl;
 
+import com.circulo.auth0.config.Auth0IntegrationConfiguration;
 import com.circulo.auth0.constants.Auth0Constants;
 import com.circulo.auth0.security.crypto.TokenCipher;
 import com.circulo.auth0.service.SessionTokenStore;
 
+import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
 import com.liferay.portal.kernel.cache.MultiVMPool;
 import com.liferay.portal.kernel.cache.PortalCache;
 
 import java.io.Serializable;
+import java.util.Map;
 
 import javax.servlet.http.HttpSession;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
+import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
@@ -20,7 +25,12 @@ import org.osgi.service.component.annotations.Reference;
  * modo que cualquier nodo del clúster Liferay puede leerlos si comparten el mismo id de sesión
  * (replicación de sesión o afinidad). Ya no se guardan en atributos de {@link HttpSession}.
  */
-@Component(immediate = true, service = SessionTokenStore.class)
+@Component(
+	configurationPolicy = ConfigurationPolicy.REQUIRE,
+	configurationPid = Auth0IntegrationConfiguration.PID,
+	immediate = true,
+	service = SessionTokenStore.class
+)
 public class SessionTokenStoreImpl implements SessionTokenStore {
 
 	private static final String CACHE_NAME =
@@ -28,13 +38,19 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 
 	private static final int MIN_TTL_SECONDS = 1;
 
+	private volatile Auth0IntegrationConfiguration _configuration;
+
 	@Reference
 	private MultiVMPool _multiVMPool;
 
 	private PortalCache<String, Serializable> _portalCache;
 
 	@Activate
-	protected void activate() {
+	@Modified
+	protected void activate(Map<String, Object> properties) {
+		_configuration = ConfigurableUtil.createConfigurable(
+			Auth0IntegrationConfiguration.class, properties);
+
 		_portalCache = _toStringKeyCache(
 			_multiVMPool.getPortalCache(CACHE_NAME));
 	}
@@ -66,10 +82,12 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 				(System.currentTimeMillis() / 1000L) + expiresInSeconds;
 		}
 
+		String encryptionKey = _getEncryptionKey();
+
 		OAuthSessionBundle bundle = new OAuthSessionBundle(
-			TokenCipher.encrypt(accessToken),
-			TokenCipher.encrypt(idToken),
-			TokenCipher.encrypt(refreshToken),
+			TokenCipher.encrypt(accessToken, encryptionKey),
+			TokenCipher.encrypt(idToken, encryptionKey),
+			TokenCipher.encrypt(refreshToken, encryptionKey),
 			expiresAtEpochSeconds);
 
 		int ttlSeconds = _ttlSeconds(expiresInSeconds);
@@ -113,7 +131,12 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 			return null;
 		}
 
-		return TokenCipher.decrypt(bundle._accessToken);
+		return TokenCipher.decrypt(bundle._accessToken, _getEncryptionKey());
+	}
+
+	private String _getEncryptionKey() {
+		Auth0IntegrationConfiguration configuration = _configuration;
+		return (configuration != null) ? configuration.tokenEncryptionKey() : "";
 	}
 
 	private static String _legacyAccessToken(HttpSession httpSession) {

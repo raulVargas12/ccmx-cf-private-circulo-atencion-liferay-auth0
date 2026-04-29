@@ -5,6 +5,9 @@ import com.circulo.auth0.constants.Auth0Constants;
 import com.circulo.auth0.service.Auth0LoginTokenService;
 import com.circulo.auth0.util.CookieUtil;
 
+import com.liferay.portal.kernel.log.Log;
+import com.liferay.portal.kernel.log.LogFactoryUtil;	
+
 import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
 import com.liferay.portal.kernel.model.User;
 import com.liferay.portal.kernel.security.auto.login.AutoLogin;
@@ -35,6 +38,8 @@ public class Auth0AutoLogin implements AutoLogin {
 
 	private volatile Auth0IntegrationConfiguration _configuration;
 
+	private static final Log _log = LogFactoryUtil.getLog(Auth0AutoLogin.class);
+
 	@Reference
 	private Auth0LoginTokenService _auth0LoginTokenService;
 
@@ -53,6 +58,11 @@ public class Auth0AutoLogin implements AutoLogin {
 			HttpServletRequest httpServletRequest,
 			HttpServletResponse httpServletResponse)
 		throws AutoLoginException {
+
+		// Si Liferay ya identificó al usuario en esta petición (ej. sesión existente o hilo principal ya lo hizo), no hacemos nada.
+		if (Validator.isNotNull(httpServletRequest.getRemoteUser())) {
+			return null;
+		}
 
 		Auth0IntegrationConfiguration configuration = _configuration;
 
@@ -85,6 +95,8 @@ public class Auth0AutoLogin implements AutoLogin {
 		try {
 			User user = _userLocalService.getUser(userId);
 
+			_log.info("Token consumido con exito. Autenticando al usuario Liferay ID: " + userId);
+
 			CookieUtil.clearCookie(
 				httpServletResponse, Auth0Constants.AUTH0_LOGIN_TOKEN,
 				secureCookies, sameSite);
@@ -94,6 +106,7 @@ public class Auth0AutoLogin implements AutoLogin {
 			};
 		}
 		catch (Exception e) {
+			_log.error("Error al obtener el usuario para el AutoLogin", e);
 			throw new AutoLoginException(e);
 		}
 	}

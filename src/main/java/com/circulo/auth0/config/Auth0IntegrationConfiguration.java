@@ -131,4 +131,12 @@ public interface Auth0IntegrationConfiguration {
 	)
 	String auth0EmailNotVerifiedPagePath();
 
+	@Meta.AD(
+		deflt = "local-dev-secret-key-change-me-in-prod-123456",
+		description = "token-encryption-key-help",
+		name = "token-encryption-key",
+		required = false
+	)
+	String tokenEncryptionKey();
+
 }

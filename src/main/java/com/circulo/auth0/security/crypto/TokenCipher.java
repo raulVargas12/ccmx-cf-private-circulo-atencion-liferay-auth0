@@ -4,17 +4,21 @@ import com.liferay.portal.kernel.log.Log;
 import com.liferay.portal.kernel.log.LogFactoryUtil;
 import com.liferay.portal.kernel.util.Validator;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Cifrado simétrico AES/GCM para proteger tokens en memoria.
- * La clave se genera dinámicamente en memoria y no se persiste.
+ * Cifrado simétrico AES/GCM para proteger tokens en clúster.
+ * La clave se deriva de la configuración OSGi (tokenEncryptionKey) para que todos los nodos
+ * puedan cifrar y descifrar los mismos tokens.
  */
 public class TokenCipher {
 
@@ -24,37 +28,41 @@ public class TokenCipher {
 	private static final int GCM_TAG_LENGTH = 128;
 	private static final int GCM_IV_LENGTH = 12;
 
-	private static SecretKey _secretKey;
+	private static final ConcurrentHashMap<String, SecretKey> _keyCache = new ConcurrentHashMap<>();
 
-	static {
-		try {
-			KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-			keyGen.init(256, new SecureRandom());
-			_secretKey = keyGen.generateKey();
+	private static SecretKey _deriveKey(String encryptionKey) throws Exception {
+		if (Validator.isBlank(encryptionKey)) {
+			throw new IllegalArgumentException("La clave de cifrado no puede estar vacía");
+		}
 
-			if (_log.isDebugEnabled()) {
-				_log.debug("TokenCipher inicializado con clave AES 256 en memoria");
+		return _keyCache.computeIfAbsent(encryptionKey, key -> {
+			try {
+				MessageDigest digest = MessageDigest.getInstance("SHA-256");
+				byte[] hash = digest.digest(key.getBytes(StandardCharsets.UTF_8));
+				return new SecretKeySpec(hash, "AES");
 			}
-		}
-		catch (Exception e) {
-			_log.error("Error inicializando TokenCipher", e);
-		}
+			catch (Exception e) {
+				throw new RuntimeException("Error derivando clave AES", e);
+			}
+		});
 	}
 
-	public static String encrypt(String plainText) {
+	public static String encrypt(String plainText, String encryptionKey) {
 		if (Validator.isBlank(plainText)) {
 			return plainText;
 		}
 
 		try {
+			SecretKey secretKey = _deriveKey(encryptionKey);
+			
 			byte[] iv = new byte[GCM_IV_LENGTH];
 			new SecureRandom().nextBytes(iv);
 
 			Cipher cipher = Cipher.getInstance(ALGORITHM);
 			GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
-			cipher.init(Cipher.ENCRYPT_MODE, _secretKey, parameterSpec);
+			cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec);
 
-			byte[] cipherText = cipher.doFinal(plainText.getBytes("UTF-8"));
+			byte[] cipherText = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
 
 			byte[] message = new byte[GCM_IV_LENGTH + cipherText.length];
 			System.arraycopy(iv, 0, message, 0, GCM_IV_LENGTH);
@@ -68,12 +76,14 @@ public class TokenCipher {
 		}
 	}
 
-	public static String decrypt(String encryptedText) {
+	public static String decrypt(String encryptedText, String encryptionKey) {
 		if (Validator.isBlank(encryptedText)) {
 			return encryptedText;
 		}
 
 		try {
+			SecretKey secretKey = _deriveKey(encryptionKey);
+			
 			byte[] message = Base64.getDecoder().decode(encryptedText);
 
 			if (message.length < GCM_IV_LENGTH) {
@@ -88,11 +98,11 @@ public class TokenCipher {
 
 			Cipher cipher = Cipher.getInstance(ALGORITHM);
 			GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
-			cipher.init(Cipher.DECRYPT_MODE, _secretKey, parameterSpec);
+			cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec);
 
 			byte[] plainText = cipher.doFinal(cipherText);
 
-			return new String(plainText, "UTF-8");
+			return new String(plainText, StandardCharsets.UTF_8);
 		}
 		catch (Exception e) {
 			if (_log.isDebugEnabled()) {
