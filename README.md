@@ -2,7 +2,7 @@
 
 ## Propósito
 
-Módulo OSGi para Liferay 7.3 con **Auth0** (**Authorization Code + PKCE**): login, callback, validación de `id_token`, aprovisionamiento de usuario, sesión portal vía `AutoLogin`, logout federado y almacenamiento de tokens OAuth en caché de clúster.
+Módulo OSGi para Liferay 7.3 con **Auth0** (**Authorization Code + PKCE**): login, callback, validación de `id_token`, aprovisionamiento de usuario, sesión portal vía `AutoLogin`, logout federado y almacenamiento de tokens OAuth en caché de clúster (ahora con cifrado AES).
 
 ## Endpoints (JAX-RS Whiteboard)
 
@@ -58,7 +58,7 @@ Si la configuración OSGi no está cargada o no hay `clientId`, en estos ramos s
 ## Configuración OSGi
 
 PID: `com.circulo.auth0.config.Auth0IntegrationConfiguration`  
-(System Settings, categoría **circulo-auth0**, o `osgi/configs`).
+(System Settings, categoría **circulo-auth0**, o `osgi/configs`). Nota: Recientemente se añadieron descripciones explícitas (tooltips) en el panel de configuración para clarificar el uso de cada propiedad desde el panel de control de Liferay.
 
 | Propiedad | Descripción |
 |-----------|-------------|
@@ -79,17 +79,19 @@ PID: `com.circulo.auth0.config.Auth0IntegrationConfiguration`
 | `authBridgeDataClaimUri` | Objeto con `usuario`, `nombre`, `apellidos`, `correo` (defecto `https://auth-bridge.com/data`). |
 | `auth0OAuthErrorPagePath` | Ruta del portlet React de errores OAuth (defecto `/web/guest/error-auth`); el callback añade `?code=`. |
 | `auth0EmailNotVerifiedPagePath` | Ruta cuando Auth0 deniega por email no verificado (defecto `/web/guest/email-no-verificado`). |
+| `tokenEncryptionKey` | **(Nuevo)** Clave secreta (mínimo 32 caracteres) usada para cifrar los tokens almacenados en sesión y en caché mediante AES. |
 
 Si la app o los roles no cumplen la política del token (`PortalAccessDeniedException`), **no** se completa el login; se limpian cookies del flujo y sesión HTTP si aplica, y el callback **redirige** a **logout Auth0** y luego a **`auth0OAuthErrorPagePath`** con **`?code=portal_access_denied`** (véase la sección *Callback* arriba).
 
 ### Perfil Liferay vs claims del token
 
-- **Usuario nuevo:** `given_name` / `family_name` con prioridad; si faltan, `nombre` / `apellidos` del objeto auth-bridge (`authBridgeDataClaimUri`). **Screen name** desde `usuario` del auth-bridge si es único y válido; si no, Liferay lo genera. Email: claim `email` o, si falta, `correo` del auth-bridge.
+- **Usuario nuevo:** `given_name` / `family_name` con prioridad; si faltan, `nombre` / `apellidos` del objeto auth-bridge (`authBridgeDataClaimUri`). **Screen name** desde `usuario` del auth-bridge si es único y válido; si no, Liferay lo genera. Email: claim `email` o, si falta, `correo` del auth-bridge. Durante la creación, el aprovisionamiento acepta automáticamente los **Términos de Uso** de Liferay y configura una **pregunta/respuesta secreta** por defecto, mejorando el flujo de SSO al evitar que Liferay intercepte al usuario en el primer login. Adicionalmente, se mejoró la firma del método `addUser` para evitar usar la API deprecada de OpenID.
 - **Usuario ya existente (mismo email):** no se actualiza el perfil en Liferay en cada login.
 - **No implementados aquí (valorar aparte):** `picture` (foto de perfil Liferay requiere descargar bytes y `updatePortrait`), `email_verified` / cambio de email (política Liferay y verificación), `nickname`, `name`, objetos anidados (`user_info`, `available_apps`, etc.), claims numéricos/booleanos de auth-bridge (solo informativos salvo reglas de negocio futuras).
 
-## Clúster Liferay y sesión HTTP
+## Clúster Liferay, sesión HTTP y Cifrado de Tokens
 
+- **Cifrado de tokens:** Para mayor seguridad, todos los tokens obtenidos desde Auth0 (`access_token`, `id_token` y `refresh_token`) se almacenan **cifrados en memoria** (AES) antes de ser guardados en la sesión o en la caché distribuida, para lo cual se utiliza la propiedad `tokenEncryptionKey` de OSGi.
 - **`Auth0LoginTokenService`**, **`UserTokenStore`** y **`SessionTokenStore`** usan **`MultiVMPool`** (cachés `com.circulo.auth0.cluster.*`). Los datos replican entre nodos según la configuración de caché del portal.
 - **`SessionTokenStore`** indexa por **`HttpSession.getId()`**. En clúster hace falta **replicación de sesión** en Liferay o **sticky session** en el balanceador para que el mismo `JSESSIONID` (y el mismo id interno de sesión) sea válido en el nodo que atienda cada petición. Sin eso, un usuario podría perder los tokens OAuth tras el login al caer en otro nodo.
 - **Operaciones:** coordinar con infraestructura (sticky o replicación documentada en el manual de Liferay para vuestra versión).
@@ -110,6 +112,7 @@ En PROD conviene dejar el paquete `com.circulo.auth0` en **INFO** o **WARN**; **
 ## Compilación y despliegue
 
 - JDK 8, `release.dxp.api` alineado al servidor (p. ej. `7.3.10.u32`).
+- **Gradle 6.9.4** (mediante el Wrapper incluido). Se bajó la versión desde Gradle 8.x/7.x ya que el plugin de Liferay Workspace (`com.liferay.gradle.plugins:13.0.16`) necesario para Liferay 7.3 no es compatible con versiones recientes de Gradle. Además, se forzó la resolución de *Guava* a la versión `31.1-jre` para evitar problemas con las variantes de dependencias que fallan en Gradle 6.
 - `gradlew deploy` o copiar el JAR al directorio `deploy` del portal.
 
 ## Licencia / uso interno
