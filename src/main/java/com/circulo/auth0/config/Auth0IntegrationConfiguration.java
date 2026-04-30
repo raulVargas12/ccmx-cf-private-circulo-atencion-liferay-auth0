@@ -20,35 +20,76 @@ public interface Auth0IntegrationConfiguration {
 
 	String PID = "com.circulo.auth0.config.Auth0IntegrationConfiguration";
 
-	@Meta.AD(deflt = "", name = "auth0-domain", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "auth0-domain-help",
+		name = "auth0-domain",
+		required = false
+	)
 	String auth0Domain();
 
-	@Meta.AD(deflt = "", name = "auth0-custom-domain", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "auth0-custom-domain-help",
+		name = "auth0-custom-domain",
+		required = false
+	)
 	String auth0CustomDomain();
 
-	@Meta.AD(deflt = "", name = "client-id", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "client-id-help",
+		name = "client-id",
+		required = false
+	)
 	String clientId();
 
-	@Meta.AD(deflt = "", name = "client-secret", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "client-secret-help",
+		name = "client-secret",
+		required = false
+	)
 	String clientSecret();
 
-	@Meta.AD(deflt = "", name = "redirect-uri", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "redirect-uri-help",
+		name = "redirect-uri",
+		required = false
+	)
 	String redirectUri();
 
-	@Meta.AD(deflt = "", name = "logout-return-uri", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "logout-return-uri-help",
+		name = "logout-return-uri",
+		required = false
+	)
 	String logoutReturnUri();
 
-	@Meta.AD(deflt = "", name = "audience", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "audience-help",
+		name = "audience",
+		required = false
+	)
 	String audience();
 
 	@Meta.AD(
 		deflt = "openid profile email",
+		description = "scopes-help",
 		name = "scopes",
 		required = false
 	)
 	String scopes();
 
-	@Meta.AD(deflt = "", name = "jwks-uri", required = false)
+	@Meta.AD(
+		deflt = "",
+		description = "jwks-uri-help",
+		name = "jwks-uri",
+		required = false
+	)
 	String jwksUri();
 
 	@Meta.AD(
