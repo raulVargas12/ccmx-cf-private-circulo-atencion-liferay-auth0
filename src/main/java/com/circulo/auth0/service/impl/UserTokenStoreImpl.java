@@ -4,7 +4,11 @@ import com.circulo.auth0.config.Auth0IntegrationConfiguration;
 import com.circulo.auth0.security.crypto.TokenCipher;
 import com.circulo.auth0.service.UserTokenStore;
 
-import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
+import com.liferay.portal.kernel.module.configuration.ConfigurationException;
+import com.liferay.portal.kernel.module.configuration.ConfigurationProvider;
+import com.liferay.portal.kernel.security.auth.CompanyThreadLocal;
+import com.liferay.portal.kernel.log.Log;
+import com.liferay.portal.kernel.log.LogFactoryUtil;
 import com.liferay.portal.kernel.cache.MultiVMPool;
 import com.liferay.portal.kernel.cache.PortalCache;
 
@@ -13,8 +17,6 @@ import java.util.Map;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
@@ -22,19 +24,20 @@ import org.osgi.service.component.annotations.Reference;
  * semántica que el antiguo mapa en memoria, sin depender del nodo que ejecutó el callback).
  */
 @Component(
-	configurationPolicy = ConfigurationPolicy.REQUIRE,
-	configurationPid = Auth0IntegrationConfiguration.PID,
 	immediate = true,
 	service = UserTokenStore.class
 )
 public class UserTokenStoreImpl implements UserTokenStore {
+
+	private static final Log _log = LogFactoryUtil.getLog(UserTokenStoreImpl.class);
 
 	private static final String CACHE_NAME =
 		"com.circulo.auth0.cluster.UserApiAccessToken";
 
 	private static final int MIN_TTL_SECONDS = 1;
 
-	private volatile Auth0IntegrationConfiguration _configuration;
+	@Reference
+	private ConfigurationProvider _configurationProvider;
 
 	@Reference
 	private MultiVMPool _multiVMPool;
@@ -42,11 +45,7 @@ public class UserTokenStoreImpl implements UserTokenStore {
 	private PortalCache<Long, Serializable> _portalCache;
 
 	@Activate
-	@Modified
 	protected void activate(Map<String, Object> properties) {
-		_configuration = ConfigurableUtil.createConfigurable(
-			Auth0IntegrationConfiguration.class, properties);
-
 		_portalCache = _toLongKeyCache(
 			_multiVMPool.getPortalCache(CACHE_NAME));
 	}
@@ -121,8 +120,18 @@ public class UserTokenStoreImpl implements UserTokenStore {
 	}
 
 	private String _getEncryptionKey() {
-		Auth0IntegrationConfiguration configuration = _configuration;
-		return (configuration != null) ? configuration.tokenEncryptionKey() : "";
+		long companyId = CompanyThreadLocal.getCompanyId();
+		if (companyId > 0) {
+			try {
+				Auth0IntegrationConfiguration configuration = _configurationProvider.getCompanyConfiguration(
+					Auth0IntegrationConfiguration.class, companyId);
+				return configuration.tokenEncryptionKey();
+			}
+			catch (ConfigurationException e) {
+				_log.error("UserTokenStoreImpl: configuración OSGi no disponible para companyId " + companyId, e);
+			}
+		}
+		return "";
 	}
 
 	private static final class UserAccessTokenEntry implements Serializable {

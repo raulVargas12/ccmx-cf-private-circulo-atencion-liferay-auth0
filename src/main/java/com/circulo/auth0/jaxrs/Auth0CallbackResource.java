@@ -14,7 +14,8 @@ import com.circulo.auth0.service.UserTokenStore;
 import com.circulo.auth0.util.Auth0OAuthUrls;
 import com.circulo.auth0.util.CookieUtil;
 
-import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
+import com.liferay.portal.kernel.module.configuration.ConfigurationException;
+import com.liferay.portal.kernel.module.configuration.ConfigurationProvider;
 import com.liferay.portal.kernel.log.Log;
 import com.liferay.portal.kernel.log.LogFactoryUtil;
 import com.liferay.portal.kernel.util.PortalUtil;
@@ -38,10 +39,7 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
@@ -56,8 +54,6 @@ import org.osgi.service.component.annotations.Reference;
  * con códigos {@link Auth0Constants} (p. ej. {@link Auth0Constants#CALLBACK_ERROR_INVALID_STATE}).
  */
 @Component(
-	configurationPolicy = ConfigurationPolicy.REQUIRE,
-	configurationPid = Auth0IntegrationConfiguration.PID,
 	immediate = true,
 	property = {
 		JaxRsWhiteboardProperties.APPLICATION_SELECT + "=(osgi.jaxrs.name=Circulo.Auth0)",
@@ -70,7 +66,8 @@ public class Auth0CallbackResource {
 
 	private static final Log _log = LogFactoryUtil.getLog(Auth0CallbackResource.class);
 
-	private volatile Auth0IntegrationConfiguration _configuration;
+	@Reference
+	private ConfigurationProvider _configurationProvider;
 
 	@Reference
 	private Auth0TokenClient _auth0TokenClient;
@@ -90,13 +87,6 @@ public class Auth0CallbackResource {
 	@Reference
 	private UserTokenStore _userTokenStore;
 
-	@Activate
-	@Modified
-	protected void activate(Map<String, Object> properties) {
-		_configuration = ConfigurableUtil.createConfigurable(
-			Auth0IntegrationConfiguration.class, properties);
-	}
-
 	@GET
 	@Produces(MediaType.WILDCARD)
 	public Response callback(
@@ -107,6 +97,19 @@ public class Auth0CallbackResource {
 
 		HttpServletRequest originalRequest =
 			PortalUtil.getOriginalServletRequest(httpServletRequest);
+
+		long companyId = PortalUtil.getCompanyId(originalRequest);
+		Auth0IntegrationConfiguration configuration;
+		try {
+			configuration = _configurationProvider.getCompanyConfiguration(
+				Auth0IntegrationConfiguration.class, companyId);
+		}
+		catch (ConfigurationException e) {
+			_log.error("Auth0 callback: configuración OSGi no disponible para companyId " + companyId, e);
+			return _redirectCallbackFriendlyError(
+				httpServletRequest, httpServletResponse, null,
+				Auth0Constants.CALLBACK_ERROR_CONFIGURATION_UNAVAILABLE);
+		}
 
 		String error = originalRequest.getParameter("error");
 		String errorDescription = originalRequest.getParameter("error_description");
@@ -122,41 +125,31 @@ public class Auth0CallbackResource {
 				_log.warn("Auth0 login falló: email no verificado");
 
 				return _seeOtherViaAuth0LogoutThenFriendlyPage(
-					httpServletRequest, _configuration,
-					_emailNotVerifiedPagePath());
+					httpServletRequest, configuration,
+					_emailNotVerifiedPagePath(configuration));
 			}
 
 			if ("access_denied".equals(error)) {
 				_log.warn("Auth0 login denegado por el usuario");
 
 				return _seeOtherViaAuth0LogoutThenFriendlyPage(
-					httpServletRequest, _configuration,
-					_auth0OAuthErrorRedirectWithCode("access_denied"));
+					httpServletRequest, configuration,
+					_auth0OAuthErrorRedirectWithCode(configuration, "access_denied"));
 			}
 
 			_log.error("Error en callback Auth0: " + error);
 
 			return _seeOtherViaAuth0LogoutThenFriendlyPage(
-				httpServletRequest, _configuration,
-				_auth0OAuthErrorRedirectWithCode(error));
+				httpServletRequest, configuration,
+				_auth0OAuthErrorRedirectWithCode(configuration, error));
 		}
 
 		if (Validator.isBlank(code) || Validator.isBlank(state)) {
 			_log.warn("Auth0 callback: code o state ausentes");
 
 			return _redirectCallbackFriendlyError(
-				httpServletRequest, httpServletResponse, _configuration,
+				httpServletRequest, httpServletResponse, configuration,
 				Auth0Constants.CALLBACK_ERROR_MISSING_PARAMS);
-		}
-
-		Auth0IntegrationConfiguration configuration = _configuration;
-
-		if (configuration == null) {
-			_log.error("Auth0 callback: configuración OSGi no disponible");
-
-			return _redirectCallbackFriendlyError(
-				httpServletRequest, httpServletResponse, null,
-				Auth0Constants.CALLBACK_ERROR_CONFIGURATION_UNAVAILABLE);
 		}
 
 		String expectedState = CookieUtil.getCookie(
@@ -271,7 +264,7 @@ public class Auth0CallbackResource {
 
 			return _seeOtherViaAuth0LogoutThenFriendlyPage(
 				httpServletRequest, configuration,
-				_auth0OAuthErrorRedirectWithCode("portal_access_denied"));
+				_auth0OAuthErrorRedirectWithCode(configuration, "portal_access_denied"));
 		}
 		catch (IllegalStateException | IllegalArgumentException e) {
 			_log.error("Auth0 callback: " + e.getMessage(), e);
@@ -315,7 +308,7 @@ public class Auth0CallbackResource {
 		}
 
 		String relativePathWithQuery = _auth0OAuthErrorRedirectWithCode(
-			callbackErrorCode);
+			configuration, callbackErrorCode);
 
 		return _seeOtherViaAuth0LogoutThenFriendlyPage(
 			httpServletRequest, configuration, relativePathWithQuery);
@@ -325,9 +318,7 @@ public class Auth0CallbackResource {
 	 * Ruta relativa al portal (p. ej. {@code /web/guest/error-auth}) donde está el portlet
 	 * {@code auth0_error}; se añade {@code ?code=} o {@code &code=} según corresponda.
 	 */
-	private String _auth0OAuthErrorPagePath() {
-		Auth0IntegrationConfiguration configuration = _configuration;
-
+	private String _auth0OAuthErrorPagePath(Auth0IntegrationConfiguration configuration) {
 		if (configuration == null) {
 			return "/web/guest/error-auth";
 		}
@@ -350,9 +341,7 @@ public class Auth0CallbackResource {
 	/**
 	 * Ruta relativa al portal cuando Auth0 devuelve {@code access_denied} por email no verificado.
 	 */
-	private String _emailNotVerifiedPagePath() {
-		Auth0IntegrationConfiguration configuration = _configuration;
-
+	private String _emailNotVerifiedPagePath(Auth0IntegrationConfiguration configuration) {
 		if (configuration == null) {
 			return "/web/guest/email-no-verificado";
 		}
@@ -372,8 +361,8 @@ public class Auth0CallbackResource {
 		return path;
 	}
 
-	private String _auth0OAuthErrorRedirectWithCode(String rawOAuthErrorCode) {
-		String base = _auth0OAuthErrorPagePath();
+	private String _auth0OAuthErrorRedirectWithCode(Auth0IntegrationConfiguration configuration, String rawOAuthErrorCode) {
+		String base = _auth0OAuthErrorPagePath(configuration);
 		String sep = base.contains("?") ? "&" : "?";
 
 		try {

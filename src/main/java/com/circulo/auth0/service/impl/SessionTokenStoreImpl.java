@@ -5,7 +5,11 @@ import com.circulo.auth0.constants.Auth0Constants;
 import com.circulo.auth0.security.crypto.TokenCipher;
 import com.circulo.auth0.service.SessionTokenStore;
 
-import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
+import com.liferay.portal.kernel.module.configuration.ConfigurationException;
+import com.liferay.portal.kernel.module.configuration.ConfigurationProvider;
+import com.liferay.portal.kernel.security.auth.CompanyThreadLocal;
+import com.liferay.portal.kernel.log.Log;
+import com.liferay.portal.kernel.log.LogFactoryUtil;
 import com.liferay.portal.kernel.cache.MultiVMPool;
 import com.liferay.portal.kernel.cache.PortalCache;
 
@@ -16,8 +20,6 @@ import javax.servlet.http.HttpSession;
 
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
@@ -26,19 +28,20 @@ import org.osgi.service.component.annotations.Reference;
  * (replicación de sesión o afinidad). Ya no se guardan en atributos de {@link HttpSession}.
  */
 @Component(
-	configurationPolicy = ConfigurationPolicy.REQUIRE,
-	configurationPid = Auth0IntegrationConfiguration.PID,
 	immediate = true,
 	service = SessionTokenStore.class
 )
 public class SessionTokenStoreImpl implements SessionTokenStore {
+
+	private static final Log _log = LogFactoryUtil.getLog(SessionTokenStoreImpl.class);
 
 	private static final String CACHE_NAME =
 		"com.circulo.auth0.cluster.SessionOAuthTokens";
 
 	private static final int MIN_TTL_SECONDS = 1;
 
-	private volatile Auth0IntegrationConfiguration _configuration;
+	@Reference
+	private ConfigurationProvider _configurationProvider;
 
 	@Reference
 	private MultiVMPool _multiVMPool;
@@ -46,11 +49,7 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 	private PortalCache<String, Serializable> _portalCache;
 
 	@Activate
-	@Modified
 	protected void activate(Map<String, Object> properties) {
-		_configuration = ConfigurableUtil.createConfigurable(
-			Auth0IntegrationConfiguration.class, properties);
-
 		_portalCache = _toStringKeyCache(
 			_multiVMPool.getPortalCache(CACHE_NAME));
 	}
@@ -135,8 +134,18 @@ public class SessionTokenStoreImpl implements SessionTokenStore {
 	}
 
 	private String _getEncryptionKey() {
-		Auth0IntegrationConfiguration configuration = _configuration;
-		return (configuration != null) ? configuration.tokenEncryptionKey() : "";
+		long companyId = CompanyThreadLocal.getCompanyId();
+		if (companyId > 0) {
+			try {
+				Auth0IntegrationConfiguration configuration = _configurationProvider.getCompanyConfiguration(
+					Auth0IntegrationConfiguration.class, companyId);
+				return configuration.tokenEncryptionKey();
+			}
+			catch (ConfigurationException e) {
+				_log.error("SessionTokenStoreImpl: configuración OSGi no disponible para companyId " + companyId, e);
+			}
+		}
+		return "";
 	}
 
 	private static String _legacyAccessToken(HttpSession httpSession) {

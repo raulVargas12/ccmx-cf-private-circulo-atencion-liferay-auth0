@@ -5,10 +5,11 @@ import com.circulo.auth0.constants.Auth0Constants;
 import com.circulo.auth0.service.Auth0LoginTokenService;
 import com.circulo.auth0.util.CookieUtil;
 
+import com.liferay.portal.kernel.module.configuration.ConfigurationException;
+import com.liferay.portal.kernel.module.configuration.ConfigurationProvider;
 import com.liferay.portal.kernel.log.Log;
 import com.liferay.portal.kernel.log.LogFactoryUtil;	
 
-import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
 import com.liferay.portal.kernel.model.User;
 import com.liferay.portal.kernel.security.auto.login.AutoLogin;
 import com.liferay.portal.kernel.security.auto.login.AutoLoginException;
@@ -16,14 +17,10 @@ import com.liferay.portal.kernel.service.UserLocalService;
 import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.portal.kernel.util.Validator;
 
-import java.util.Map;
-
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
@@ -31,27 +28,21 @@ import org.osgi.service.component.annotations.Reference;
  * devuelve credenciales para el pipeline oficial del portal.
  */
 @Component(
-	configurationPid = Auth0IntegrationConfiguration.PID, immediate = true,
+	immediate = true,
 	service = AutoLogin.class
 )
 public class Auth0AutoLogin implements AutoLogin {
 
-	private volatile Auth0IntegrationConfiguration _configuration;
-
 	private static final Log _log = LogFactoryUtil.getLog(Auth0AutoLogin.class);
+
+	@Reference
+	private ConfigurationProvider _configurationProvider;
 
 	@Reference
 	private Auth0LoginTokenService _auth0LoginTokenService;
 
 	@Reference
 	private UserLocalService _userLocalService;
-
-	@Activate
-	@Modified
-	protected void activate(Map<String, Object> properties) {
-		_configuration = ConfigurableUtil.createConfigurable(
-			Auth0IntegrationConfiguration.class, properties);
-	}
 
 	@Override
 	public String[] login(
@@ -64,13 +55,19 @@ public class Auth0AutoLogin implements AutoLogin {
 			return null;
 		}
 
-		Auth0IntegrationConfiguration configuration = _configuration;
+		long companyId = PortalUtil.getCompanyId(httpServletRequest);
+		Auth0IntegrationConfiguration configuration;
+		try {
+			configuration = _configurationProvider.getCompanyConfiguration(
+				Auth0IntegrationConfiguration.class, companyId);
+		}
+		catch (ConfigurationException e) {
+			_log.error("Auth0AutoLogin: configuración OSGi no disponible para companyId " + companyId, e);
+			return null;
+		}
 
-		boolean secureCookies =
-			(configuration != null) && configuration.cookiesSecure();
-
-		String sameSite =
-			(configuration != null) ? configuration.cookieSameSite() : "";
+		boolean secureCookies = configuration.cookiesSecure();
+		String sameSite = configuration.cookieSameSite();
 
 		HttpServletRequest originalRequest = PortalUtil.getOriginalServletRequest(
 			httpServletRequest);

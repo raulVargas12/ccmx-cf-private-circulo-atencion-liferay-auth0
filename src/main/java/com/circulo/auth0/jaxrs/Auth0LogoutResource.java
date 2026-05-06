@@ -7,14 +7,14 @@ import com.circulo.auth0.service.UserTokenStore;
 import com.circulo.auth0.util.Auth0OAuthUrls;
 import com.circulo.auth0.util.CookieUtil;
 
-import com.liferay.portal.configuration.metatype.bnd.util.ConfigurableUtil;
+import com.liferay.portal.kernel.module.configuration.ConfigurationException;
+import com.liferay.portal.kernel.module.configuration.ConfigurationProvider;
 import com.liferay.portal.kernel.log.Log;
 import com.liferay.portal.kernel.log.LogFactoryUtil;
 import com.liferay.portal.kernel.util.PortalUtil;
 import com.liferay.portal.kernel.util.Validator;
 
 import java.net.URI;
-import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -26,10 +26,7 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
 
 /**
@@ -37,8 +34,6 @@ import org.osgi.service.component.annotations.Reference;
  * logout federado de Auth0.
  */
 @Component(
-	configurationPolicy = ConfigurationPolicy.REQUIRE,
-	configurationPid = Auth0IntegrationConfiguration.PID,
 	immediate = true,
 	property = {
 		JaxRsWhiteboardProperties.APPLICATION_SELECT + "=(osgi.jaxrs.name=Circulo.Auth0)",
@@ -51,7 +46,8 @@ public class Auth0LogoutResource {
 
 	private static final Log _log = LogFactoryUtil.getLog(Auth0LogoutResource.class);
 
-	private volatile Auth0IntegrationConfiguration _configuration;
+	@Reference
+	private ConfigurationProvider _configurationProvider;
 
 	@Reference
 	private SessionTokenStore _sessionTokenStore;
@@ -59,28 +55,25 @@ public class Auth0LogoutResource {
 	@Reference
 	private UserTokenStore _userTokenStore;
 
-	@Activate
-	@Modified
-	protected void activate(Map<String, Object> properties) {
-		_configuration = ConfigurableUtil.createConfigurable(
-			Auth0IntegrationConfiguration.class, properties);
-	}
-
 	@POST
 	@Produces(MediaType.WILDCARD)
 	public Response logout(
 			@Context HttpServletRequest httpServletRequest,
 			@Context HttpServletResponse httpServletResponse) {
 
-		Auth0IntegrationConfiguration configuration = _configuration;
-
-		if (configuration == null) {
-			_log.error("Auth0 logout: configuración OSGi no disponible");
+		long companyId = PortalUtil.getCompanyId(httpServletRequest);
+		Auth0IntegrationConfiguration configuration;
+		try {
+			configuration = _configurationProvider.getCompanyConfiguration(
+				Auth0IntegrationConfiguration.class, companyId);
+		}
+		catch (ConfigurationException e) {
+			_log.error("Auth0 logout: configuración OSGi no disponible para companyId " + companyId, e);
 
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 				.type(MediaType.TEXT_PLAIN + ";charset=UTF-8")
 				.entity(
-					"Configuración Auth0 no disponible. Compruebe System Settings / OSGi.")
+					"Configuración Auth0 no disponible. Compruebe Instance Settings.")
 				.build();
 		}
 

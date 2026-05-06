@@ -8,8 +8,8 @@ import com.liferay.portal.configuration.metatype.annotations.ExtendedObjectClass
  * Configuración central del módulo (System Settings / fichero {@code .config} en {@code osgi/configs}).
  */
 @ExtendedObjectClassDefinition(
-	category = "circulo-auth0",
-	scope = ExtendedObjectClassDefinition.Scope.SYSTEM
+	category = "circulo-configuracion-auth0",
+	scope = ExtendedObjectClassDefinition.Scope.COMPANY
 )
 @Meta.OCD(
 	id = "com.circulo.auth0.config.Auth0IntegrationConfiguration",

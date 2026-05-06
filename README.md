@@ -58,7 +58,7 @@ Si la configuración OSGi no está cargada o no hay `clientId`, en estos ramos s
 ## Configuración OSGi
 
 PID: `com.circulo.auth0.config.Auth0IntegrationConfiguration`  
-(System Settings, categoría **circulo-auth0**, o `osgi/configs`). Nota: Recientemente se añadieron descripciones explícitas (tooltips) en el panel de configuración para clarificar el uso de cada propiedad desde el panel de control de Liferay.
+(Instance Settings / Configuración de Instancia, sección **Circulo-Autenticacion**, categoría **Circulo-Configuracion-Auth0**). Nota: Recientemente se añadieron descripciones explícitas (tooltips) en el panel de configuración para clarificar el uso de cada propiedad desde el panel de control de Liferay.
 
 | Propiedad | Descripción |
 |-----------|-------------|
