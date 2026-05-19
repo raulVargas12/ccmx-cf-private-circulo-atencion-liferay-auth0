@@ -54,19 +54,11 @@ public interface Auth0IntegrationConfiguration {
 
 	@Meta.AD(
 		deflt = "",
-		description = "redirect-uri-help",
-		name = "redirect-uri",
+		description = "jwks-uri-help",
+		name = "jwks-uri",
 		required = false
 	)
-	String redirectUri();
-
-	@Meta.AD(
-		deflt = "",
-		description = "logout-return-uri-help",
-		name = "logout-return-uri",
-		required = false
-	)
-	String logoutReturnUri();
+	String jwksUri();
 
 	@Meta.AD(
 		deflt = "",
@@ -86,19 +78,19 @@ public interface Auth0IntegrationConfiguration {
 
 	@Meta.AD(
 		deflt = "",
-		description = "jwks-uri-help",
-		name = "jwks-uri",
+		description = "redirect-uri-help",
+		name = "redirect-uri",
 		required = false
 	)
-	String jwksUri();
+	String redirectUri();
 
 	@Meta.AD(
-		deflt = "false",
-		description = "cookies-secure-help",
-		name = "cookies-secure",
+		deflt = "",
+		description = "logout-return-uri-help",
+		name = "logout-return-uri",
 		required = false
 	)
-	boolean cookiesSecure();
+	String logoutReturnUri();
 
 	@Meta.AD(
 		deflt = "/group/guest/home",
@@ -109,12 +101,44 @@ public interface Auth0IntegrationConfiguration {
 	String postLoginRedirectPath();
 
 	@Meta.AD(
+		deflt = "/web/guest/email-no-verificado",
+		description = "auth0-email-not-verified-page-path-help",
+		name = "auth0-email-not-verified-page-path",
+		required = false
+	)
+	String auth0EmailNotVerifiedPagePath();
+
+	@Meta.AD(
+		deflt = "/web/guest/error-auth",
+		description = "auth0-oauth-error-page-path-help",
+		name = "auth0-oauth-error-page-path",
+		required = false
+	)
+	String auth0OAuthErrorPagePath();
+
+	@Meta.AD(
+		deflt = "false",
+		description = "cookies-secure-help",
+		name = "cookies-secure",
+		required = false
+	)
+	boolean cookiesSecure();
+	
+	@Meta.AD(
 		deflt = "lax",
 		description = "cookie-same-site-help",
 		name = "cookie-same-site",
 		required = false
 	)
 	String cookieSameSite();
+
+	@Meta.AD(
+		deflt = "local-dev-secret-key-change-me-in-prod-123456",
+		description = "token-encryption-key-help",
+		name = "token-encryption-key",
+		required = false
+	)
+	String tokenEncryptionKey();
 
 	@Meta.AD(
 		deflt = "https://circulo.com/app",
@@ -155,29 +179,4 @@ public interface Auth0IntegrationConfiguration {
 		required = false
 	)
 	String authBridgeDataClaimUri();
-
-	@Meta.AD(
-		deflt = "/web/guest/error-auth",
-		description = "auth0-oauth-error-page-path-help",
-		name = "auth0-oauth-error-page-path",
-		required = false
-	)
-	String auth0OAuthErrorPagePath();
-
-	@Meta.AD(
-		deflt = "/web/guest/email-no-verificado",
-		description = "auth0-email-not-verified-page-path-help",
-		name = "auth0-email-not-verified-page-path",
-		required = false
-	)
-	String auth0EmailNotVerifiedPagePath();
-
-	@Meta.AD(
-		deflt = "local-dev-secret-key-change-me-in-prod-123456",
-		description = "token-encryption-key-help",
-		name = "token-encryption-key",
-		required = false
-	)
-	String tokenEncryptionKey();
-
 }
